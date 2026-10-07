@@ -20,23 +20,11 @@ class AppConfig {
     return AppConfig(
       apiBaseUrl: configuredApiBaseUrl.isNotEmpty
           ? configuredApiBaseUrl
-          : _defaultApiBaseUrl(),
+          : 'https://equilibrafit-plusplus-api-4lkw.onrender.com',
       requestTimeout: const Duration(seconds: 20),
     );
   }
 
   final String apiBaseUrl;
   final Duration requestTimeout;
-
-  static String _defaultApiBaseUrl() {
-    if (kIsWeb) {
-      return 'http://localhost:5158';
-    }
-
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5158';
-    }
-
-    return 'http://localhost:5158';
-  }
 }

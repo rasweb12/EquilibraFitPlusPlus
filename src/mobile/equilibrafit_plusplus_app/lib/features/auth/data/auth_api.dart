@@ -4,6 +4,9 @@ import 'auth_response_dto.dart';
 class AuthApi {
   const AuthApi(this._client);
 
+  // Render cold starts can take longer than the normal API response deadline.
+  static const authenticationTimeout = Duration(seconds: 90);
+
   final ApiClient _client;
 
   Future<void> logout() async {
@@ -17,6 +20,7 @@ class AuthApi {
     final json = await _client.postJson(
       '/api/v1/auth/login',
       body: <String, Object?>{'email': email.trim(), 'senha': password},
+      timeout: authenticationTimeout,
     );
 
     return AuthResponseDto.fromJson(json);
@@ -44,6 +48,7 @@ class AuthApi {
         'senha': password,
         'aceites': consents,
       },
+      timeout: authenticationTimeout,
     );
 
     return AuthResponseDto.fromJson(json);

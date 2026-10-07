@@ -30,7 +30,8 @@
   Root Certificate. /health/ready retorna 200 no host e no emulador. Npgsql
   confirmou as sete migrations aplicadas, sem erro de leitura nem pendencias.
 - Resend: equilibrafitplus.com.br cadastrado, envio habilitado, verificacao
-  pending. Uma verificacao foi disparada; registros DNS ainda nao encontrados.
+  failed na consulta mais recente. DKIM e ambos os CNAMEs tambem failed.
+  Google DNS e Cloudflare retornaram NXDOMAIN; RDAP Registro.br retornou 404.
 - Open/click tracking ja desabilitados; recebimento de email nao foi habilitado.
 - Senha administrativa temporaria fornecida pelo usuario foi usada apenas em
   memoria via prompt protegido no smoke Auth; nao foi exibida em saida ou gravada
@@ -197,6 +198,52 @@ de 15 segundos, ausencia de retry, erros 503/504 e ausencia de perfis indevidos.
 Revogacao JWT e isolamento permanecem testados. Os hosts de teste compartilham
 uma collection xUnit para respeitar o logger bootstrap global do entrypoint.
 
+## Diagnostico Do Cadastro Publicado
+
+Consulta somente leitura em 2026-10-07, apos instalar o APK com a API HTTPS.
+Os logs filtrados do emulador registram HTTP 504 em POST /api/v1/auth/cadastrar,
+cerca de 16 segundos apos cada chamada. Nos logs Auth do projeto correto,
+as 19:40:59, 19:41:26 e 19:41:47 UTC, POST /signup retornou 504 com
+request_timeout e context deadline exceeded. Cada registro teve um 200 posterior
+com o MESMO request_id; isso nao comprova cadastro ou entrega de email.
+Nao foram disparadas novas tentativas de cadastro pelo agente.
+
+Inspecao do banco: um usuario confirmado, zero nao confirmados; nenhum trigger
+customizado em auth.users/auth.identities. Nao havia conexoes supabase_auth_admin
+visiveis no instante da consulta. Essa amostra nao exclui bloqueios transitorios
+ou Auth hooks configurados fora do banco e nao identifica a causa do timeout.
+
+Pendencia independente confirmada: o dominio equilibrafitplus.com.br e seus tres
+registros Resend retornaram NXDOMAIN em Google DNS e Cloudflare; consulta RDAP
+Registro.br retornou 404. O Resend informa failed para dominio, DKIM e CNAMEs.
+Confirmar grafia, registro e delegacao no provedor antes de configurar os
+[registros DNS exatos abaixo](#dns-exato-do-resend). Cadastrar o dominio apenas
+no Resend nao registra o dominio nem publica esses registros no DNS.
+[Diagnostico oficial de verificacao](https://resend.com/docs/knowledge-base/what-if-my-domain-is-not-verifying).
+
+As ferramentas conectadas nao leem ou alteram o SMTP efetivamente salvo no
+Supabase. O operador informou os campos publicos: smtp.resend.com, porta 461,
+username resend e remetente onboarding@resend.dev. A porta 461 diverge da
+[integracao oficial](https://resend.com/docs/send-with-supabase-smtp), que orienta
+465. Corrigir SOMENTE a porta para 465 em Authentication -> Email -> SMTP
+Settings e salvar. Preservar as demais configuracoes e confirmacao de email;
+Password deve continuar sendo a API key Resend preenchida pelo operador.
+Nao enviar chaves no chat. A porta incorreta e compativel com o timeout observado;
+a correcao ainda precisa ser validada com um cadastro controlado pelo operador.
+
+onboarding@resend.dev e um remetente de testes: so permite envio ao email da
+propria conta Resend. Nao usar admin@equilibrafit.local como destinatario de
+confirmacao, pois .local nao recebe email publico. Para cadastro publico,
+regularizar/verificar o dominio proprio e depois configurar seu remetente.
+[Restricao oficial resend.dev](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
+O dominio proprio failed e uma pendencia separada; ele nao e o remetente
+informado e, portanto, nao explica sozinho o timeout atual. Nao trocar para
+noreply@equilibrafitplus.com.br antes da verificacao. Nao e necessario outro APK
+para alterar o SMTP do Supabase.
+
+Sem alteracoes em Auth/SMTP/DNS, confirmacao de email, timeouts ou aplicativo.
+Sem retries, envio de emails, criacao de contas, novo APK, commit ou push.
+
 ## Migrations Antes Do Readiness
 
 A factory EF usa variaveis de ambiente, nao User Secrets ou .env. Para nao
@@ -272,15 +319,48 @@ signing key ES256/RS256 e URLs permitidas, conforme [Supabase](supabase.md).
 ES256 foi observado no endpoint publico JWKS; nenhum algoritmo foi alterado.
 Templates prontos para Authentication -> Email -> Templates:
 - [Confirm signup](../infra/supabase/templates/confirmation.html), assunto
-  `Confirme seu email - EquilibraFit++`, usando ConfirmationURL do Supabase.
+  `Confirme seu e-mail - EquilibraFit++`, usando ConfirmationURL do Supabase.
 - [Reset password](../infra/supabase/templates/recovery.html), assunto
   `Redefina sua senha - EquilibraFit++`, usando o deep link Android token_hash.
 
-Em URL Configuration, permitir `equilibrafitplusplus://auth/recovery` e usar
-Site URL HTTPS de um frontend realmente publicado. O dominio ainda nao respondeu
-na consulta DNS local; nao tratar https://equilibrafitplus.com.br nem a URL
-prevista do Render como aplicacao publicada. Nao usar wildcards globais.
-Nao diminuir protecoes de Auth ou desabilitar confirmacao para contornar SMTP.
+### Publicar O Email De Confirmacao
+
+O email encaminhado pelo operador ainda usa o texto padrao em ingles e
+redirect_to=http://localhost:3000. Isso indica que template/URL configuration
+do Supabase ainda precisam ser atualizados; os arquivos locais nao sao
+publicados pelo Docker ou Render. Nao abrir, reutilizar ou registrar o token
+desse email para testar a configuracao.
+
+No projeto knaubynyytqnyyrdrkfi, Authentication -> Email -> Templates -> Confirm
+sign up, salvar o assunto `Confirme seu e-mail - EquilibraFit++` e o HTML de
+[confirmation.html](../infra/supabase/templates/confirmation.html).
+Manter `{{ .ConfirmationURL }}` no botao: o Supabase gera um link individual
+para cada destinatario. Nao substituir pelo link de um email ja enviado.
+[Configuracao oficial de templates](https://supabase.com/docs/guides/auth/auth-email-templates).
+
+Em Authentication -> URL Configuration, salvar:
+- Site URL: `equilibrafitplusplus://auth/login`.
+- Redirect URLs: `equilibrafitplusplus://auth/login` e
+  `equilibrafitplusplus://auth/recovery`, preservando outros destinos legitimos
+  ja configurados. Nao adicionar wildcards globais nem localhost para a Beta.
+
+O APK Android atualizado declara o destino /login; a rota Flutter ja existia.
+O Supabase verifica o email antes do retorno ao aplicativo. O callback abre
+login sem aceitar tokens da URL como uma nova sessao; o usuario entra com
+email/senha pela API existente. Recovery continua separado. Essa configuracao
+mobile precisa do APK atualizado, nao de um redeploy da API. iOS e retorno em
+navegadores sem o app instalado continuam fora desta validacao Android.
+[Site URL e destinos mobile oficiais](https://supabase.com/docs/guides/auth/redirect-urls).
+
+O Admin publicado nao e um handler mobile de confirmacao. O dominio proprio
+nao responde no DNS; nao usar https://equilibrafitplus.com.br como destino
+publicado sem verificacao. Nao desabilitar confirmacao de email.
+
+Depois de salvar no painel, testar com NOVO email de confirmacao solicitado
+pelo operador: texto em portugues, branding correto, ausencia de localhost,
+confirmacao e retorno ao APK. Links ja enviados nao mudam retroativamente.
+O agente nao enviou emails, consumiu tokens, confirmou contas ou salvou esses
+campos remotos por MCP; a verificacao real depende dessa publicacao no painel.
 
 ## DNS Exato Do Resend
 
@@ -301,7 +381,8 @@ p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDetrJ9OBzrUCaFwHzF6W+yb+Zh2LP6dkjCPaQcDF
 
 Se o provedor exigir nomes completos, adicionar .equilibrafitplus.com.br ao nome
 relativo uma unica vez. CNAMEs nao devem ser proxies HTTP (Cloudflare: DNS only).
-O registro `send` veio com status not_started; `rsend` e DKIM estavam pending.
+Na criacao, `send` estava not_started; `rsend` e DKIM estavam pending.
+A consulta mais recente em 2026-10-07 retornou failed para os tres registros.
 Confirmar os tres no painel Resend antes de salvar e solicitar nova verificacao
 apos propagacao. Revisar DMARC com o provedor sem inventar endereco de relatorios.
 

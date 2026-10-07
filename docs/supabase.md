@@ -64,7 +64,11 @@ exige migration revisada, nao disable global de RLS.
 ## Auth E Email
 
 Habilite email/senha, confirmacao de email e signing key ES256 ou RS256.
-Configure Site URL/redirects para endereco publico seu e SMTP adequado.
+Para o APK Android atual, use Site URL `equilibrafitplusplus://auth/login` e
+permita esse mesmo destino em Redirect URLs. Mantenha o redirect de recovery
+separado: `equilibrafitplusplus://auth/recovery`. Nao usar localhost na Beta.
+Esses campos e o template sao salvos no painel Supabase, nao pelo deploy Render.
+Veja os [passos de publicacao do email](supabase-resend-setup.md#publicar-o-email-de-confirmacao).
 Cadastro sem sessao retorna email_confirmation_required, nao cria perfil
 com base apenas em resposta anonima. Apos confirmar, o login provisiona perfil.
 
@@ -72,7 +76,8 @@ O Flutter usa endpoints existentes via adapter da API, sem supabase_flutter.
 Tokens persistem no secure storage; refresh e logout pertencem ao Supabase.
 Google OAuth nao foi implementado nesta etapa.
 
-Signup/login/refresh tem timeout HTTP de 15 segundos (Flutter: 20), sem retry
+Signup/login/refresh tem timeout HTTP de 15 segundos (Flutter: login/cadastro
+90 segundos, demais requests 20), sem retry
 automatico. Timeout/408/504 do provider retornam auth.provider_timeout (504);
 rede/5xx restantes/JSON invalido retornam auth.provider_unavailable (503).
 Credenciais invalidas continuam distintas de indisponibilidade temporaria.

@@ -7,8 +7,10 @@ Esta entrega NAO certifica prontidao Beta: gates externos continuam pendentes.
 
 Destino: D:\Curso\APP\EquilibraFit++.
 Origem read-only: D:\Curso\APP\EQUILIBRAFIT.
-Git local independente inicializado em main, sem commits, remote ou push.
-Repositorio remoto pretendido: rasweb12/EQUILIBRAFIT-PLUSPLUS, ainda nao criado.
+Git independente em main. Remoto atual confirmado em 2026-10-07:
+rasweb12/EquilibraFitPlusPlus. A derivacao inicialmente nao tinha commits/remote;
+o operador configurou o repositorio e publicou os servicos posteriormente.
+Nenhum commit/push foi feito na verificacao de URLs desta tarefa.
 Nenhuma alteracao foi feita no original; seu Program.cs Admin ja estava modificado
 antes desta derivacao e foi preservado.
 
@@ -309,10 +311,10 @@ docker compose ps
 Mobile:
 ```powershell
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5158
-flutter run --dart-define=API_BASE_URL=https://equilibrafit-plusplus-api.onrender.com
+flutter run --dart-define=API_BASE_URL=https://equilibrafit-plusplus-api-4lkw.onrender.com
 ```
 
-Confirme a URL realmente atribuida pelo Render. Release exige ID publico e
+A URL da Beta foi confirmada em [Render](render.md). Release exige ID publico e
 assinatura proprios; debug usa br.com.equilibrafit.app.plusplus.dev.
 Nenhum applicationId ou keystore do original foi alterado.
 
@@ -336,7 +338,8 @@ Nenhum comando de commit/push e executado automaticamente.
   essa verificacao no aparelho.
 - Definir applicationId Play publico, assinatura propria, produtos/license
   testers, ADC/RTDN/chave AES e validar cenarios de assinatura sandbox.
-- Publicar novo repo somente com autorizacao; deploy Render e TLS/health reais.
+- Alterar/publicar codigo somente com autorizacao; TLS/health Render aprovados
+  em 2026-10-07, fluxos autenticados no deploy ainda precisam de validacao.
 - Validar OpenAI real e cold starts/always-on para AI e worker de billing.
 - Futuro: OAuth, Storage privado/signed URLs, iOS/browser recovery, troca de
   plano com prorata na UI, exclusao definitiva auth.users/LGPD revisada,
@@ -344,3 +347,188 @@ Nenhum comando de commit/push e executado automaticamente.
 
 Nao declarar Supabase, billing, Docker ou Render funcionando antes de comprovar
 os respectivos gates. Nenhum secret real deve ser enviado pelo chat.
+
+## Verificacao De URLs Render - 2026-10-07
+
+URLs fornecidas pelo operador e verificadas com HTTPS/TLS normal:
+
+| Check | Resultado |
+| --- | --- |
+| https://equilibrafit-plusplus-api-4lkw.onrender.com/health | 200 Healthy |
+| https://equilibrafit-plusplus-api-4lkw.onrender.com/health/ready | 200 Healthy; banco, seed e migrations prontos |
+| https://equilibrafit-plusplus-ai-4lkw.onrender.com/health | 200 Healthy |
+| https://equilibrafit-plusplus-admin-4lkw.onrender.com/health | 200 Healthy |
+| https://equilibrafit-plusplus-admin-4lkw.onrender.com/login | 200; EquilibraFit++ Admin |
+| API /api/v1/admin/dashboard sem token | 401 |
+| AI /api/v1/coach/chat sem chave interna | 401 |
+
+Supabase MCP confirmou EquilibraFit++, ref knaubynyytqnyyrdrkfi, ACTIVE_HEALTHY,
+URL https://knaubynyytqnyyrdrkfi.supabase.co. Configuracao local conferida sem
+exibir credenciais: session pooler aws-0-sa-east-1.pooler.supabase.com:5432,
+SSL Mode VerifyFull. Vero e projeto original nao foram alterados.
+
+Arquivos criados nesta verificacao:
+- src/backend/EquilibraFitPlusPlus.Api/appsettings.Production.json
+- src/admin/EquilibraFitPlusPlus.Admin/appsettings.Production.json
+- src/mobile/equilibrafit_plusplus_app/test/core/config/app_config_test.dart
+- tests/EquilibraFitPlusPlus.Architecture.Tests/Deployment/ServiceUrlConfigurationTests.cs
+
+Arquivos adaptados nesta verificacao:
+- .env.example: distinguir destinos locais dos valores Render.
+- README.md: URL Beta, comando debug e repositorio realmente configurado.
+- docs/render.md: URLs, overrides, verificacoes e limites observados.
+- docs/supabase-resend-setup.md: atualizar estado do frontend publicado.
+- docs/validation.md: este registro e comandos atualizados.
+- src/mobile/equilibrafit_plusplus_app/lib/core/config/app_config.dart: default
+  debug HTTPS da Beta; API_BASE_URL explicita ainda tem prioridade.
+- src/mobile/equilibrafit_plusplus_app/lib/core/http/api_client.dart: remover
+  instrucao de usar IP local no erro de uma API remota.
+- src/mobile/equilibrafit_plusplus_app/test/core/http/api_client_test.dart:
+  regressao da mensagem de falha de conexao remota, sem chamada de rede real.
+
+Nenhum arquivo copiado, removido ou descartado nesta verificacao. Nenhuma
+dependencia ou migration adicionada/removida. SQLite, outbox, sync, idempotencia,
+conflitos e autenticacao nao foram reescritos. Alteracao preexistente no Program.cs
+da API nova preservada; Program.cs Admin do original continua com a alteracao
+preexistente, sem edicoes desta tarefa.
+
+localhost e IPs loopback restantes estao em configuracao de desenvolvimento,
+launch profiles, fixtures, scripts locais e health checks/binds Docker. O
+Blueprint usa DNS/URLs de servicos, e os arquivos Production usam URLs HTTPS.
+Guarda de release ainda rejeita localhost/10.0.2.2. Registros historicos de
+testes locais foram preservados como historico, nao como destinos da Beta.
+
+Testes repetidos nesta verificacao:
+- dotnet restore: PASS.
+- dotnet build -c Release: PASS, zero erros no build final. O primeiro build
+  completo exibiu avisos XML CS1591 preexistentes e dois erros no teste novo,
+  corrigidos antes da repeticao; build incremental final sem avisos.
+- dotnet test -c Release: 187 PASS, 2 SKIP, zero falhas; seis TRX conferidos
+  em artifacts/test-results/render-urls. SKIPs continuam sendo os bancos
+  descartaveis PostgreSQL/RLS nao configurados, nao aprovacao desses testes.
+- flutter pub get: PASS; nenhuma atualizacao de dependencias solicitada.
+- flutter analyze: PASS apos corrigir virgula exigida no teste novo.
+- flutter test: 39 PASS, incluindo offline/outbox; teste de configuracao
+  repetido com API_BASE_URL=http://10.0.2.2:5158: mais seis PASS.
+- Ruff: PASS. pytest: 26 PASS.
+- scripts/validate_deployment.py: PASS nos schemas oficiais Render e Compose,
+  referencias de servicos/secrets/banco remoto e Redis opcional. Isso NAO
+  substitui docker compose config/build/up; Docker nao esta instalado aqui.
+- git diff --check: PASS. Triagem de padroes de chaves privadas nos arquivos
+  alterados sem achados; nao equivale a uma auditoria completa do repositorio.
+
+APK debug recompilado com:
+flutter build apk --debug --dart-define=API_BASE_URL=https://equilibrafit-plusplus-api-4lkw.onrender.com
+Instalado com adb install -r no emulator-5554, sem limpar dados. Package
+br.com.equilibrafit.app.plusplus.dev, versao 1.0.0+1, tela inicial aberta e
+branding conferido. Nenhum aparelho fisico conectado; nenhum release gerado.
+APK: src/mobile/equilibrafit_plusplus_app/build/app/outputs/flutter-apk/app-debug.apk.
+SHA256: F574D740CF7E4B292695BC7616160CF3552772A56DA75E5C343FB4B10B075BA5.
+Kernel Dart do APK contem a URL HTTPS e nao contem os antigos destinos
+http://10.0.2.2:5158 ou http://localhost:5158. Captura em
+artifacts/equilibrafit-plusplus-render.png, ignorada pelo Git.
+
+Limites: a primeira resposta da API levou 57 segundos; isso e compativel com
+cold start e pode exceder o timeout mobile de 20 segundos. Nao foram alterados
+timeouts/retries nem contratados recursos pagos. Variaveis privadas efetivas do
+Render nao foram inspecionadas: overrides tem prioridade sobre appsettings.
+Conferir AiCoach__BaseUrl, AdminApi__BaseUrl e chave interna comum conforme
+docs/render.md. Health checks nao comprovam login/Admin -> API/API -> AI
+autenticados, OpenAI, entrega SMTP, billing ou fluxo mobile completo.
+Nao houve commit, push ou redeploy automatico nesta tarefa.
+
+## Cadastro No Emulador - Timeout De Resposta
+
+Atualizacao posterior a verificacao de URLs, em 2026-10-07. O operador confirmou
+que a captura era do emulador durante cadastro. Log filtrado do emulator-5554:
+POST /api/v1/auth/cadastrar iniciado as 19:30:00.998 UTC e receiveTimeout as
+19:30:22.104 UTC, aproximadamente 21 segundos. Nenhum token, senha ou corpo do
+cadastro foi impresso. Rede do emulador VALIDATED, sem proxy global configurado.
+Health da API 200 em 6,17 segundos; ready 200 em 0,79 segundo. POST com campos
+vazios retornou 400 de validacao em 1,52 segundo, sem criar usuario/enviar email.
+
+Cold start e uma explicacao compativel: Render Free documenta aproximadamente
+um minuto para iniciar, e antes foi observada resposta de 57 segundos.
+Nao se comprovou a causa no log do Render. Consulta somente leitura dos logs
+Auth do Supabase nao encontrou /signup no horario dessa tentativa; havia
+registros antigos 504 request_timeout e 200. Isso nao prova que entrega SMTP
+esteja resolvida nem que a conta do operador tenha sido criada.
+
+Correcoes limitadas ao cliente mobile:
+- AuthApi.authenticationTimeout = 90 segundos somente para cadastro/login,
+  usando o mecanismo existente de timeout por request do ApiClient.
+- Conexao, timeout normal de requests/logout (20 segundos), IA (75 segundos),
+  SQLite/outbox/offline, payloads de consentimento e sessao foram preservados.
+- receiveTimeout agora tem mensagem de demora do servidor, distinta de uma
+  falha de conexao; codigo network_unavailable preservado por compatibilidade.
+- Nenhum retry automatico de cadastro adicionado.
+
+Criado: src/mobile/equilibrafit_plusplus_app/test/features/auth/auth_api_test.dart.
+Adaptados: lib/features/auth/data/auth_api.dart, lib/core/http/api_client.dart e
+test/core/http/api_client_test.dart dentro do projeto Flutter; docs/render.md e
+docs/validation.md. Nenhum arquivo copiado/descartado/removido, dependency ou
+migration alterada. Backend/Supabase/Render/original nao foram modificados.
+
+flutter analyze: PASS depois de corrigir duas virgulas exigidas nos testes.
+flutter test: 46 PASS, zero falhas, incluindo seis casos AuthApi novos e uma
+regressao da mensagem de receiveTimeout. Teste usa servidor HTTP descartavel
+loopback com resposta atrasada alem do timeout normal reduzido do fixture e
+confirma uma unica chamada; nao envia cadastro para servicos reais.
+Nao foram repetidos .NET/Python/Docker nesta etapa, pois nao sofreram alteracoes.
+Build APK debug: PASS; aviso Kotlin/toolchain preexistente permanece.
+
+APK recompilado com a API HTTPS publicada, instalado com adb install -r em
+emulator-5554, sem limpar dados. Kernel verificado: URL Beta e simbolo
+authenticationTimeout presentes; antigos destinos de API locais ausentes.
+SHA256 atual: 1952EDDDD8ED8EB89487ABA29C9542C5D41A1CBF790E90987A070741BA241A9D.
+Package br.com.equilibrafit.app.plusplus.dev e applicationId do original intacto.
+Nenhum release, commit, push, redeploy ou recurso pago criado. Cadastro real,
+confirmacao e entrega de email ainda devem ser tentados pelo operador; este
+ajuste evita o corte prematuro do cliente, nao certifica todos os fluxos Auth.
+
+## Email De Confirmacao E Retorno Android
+
+Em 2026-10-07, o operador recebeu o email padrao em ingles com redirect_to
+apontando para localhost:3000. O link/token encaminhado NAO foi aberto,
+reutilizado, copiado em arquivos ou enviado a ferramentas de navegacao.
+
+Adaptados: infra/supabase/templates/confirmation.html (portugues, branding,
+CTA e ConfirmationURL individual), AndroidManifest.xml (intent exato /login,
+preservando /recovery), docs/supabase.md e docs/supabase-resend-setup.md.
+Criado: tests/EquilibraFitPlusPlus.Architecture.Tests/Deployment/EmailConfirmationConfigurationTests.cs.
+Nenhum arquivo copiado/removido, dependencia/migration alterada, endpoint novo
+ou mudanca no original. Login continua exigindo senha pela API; nao se cria
+sessao com tokens recebidos no deep link.
+
+Publicacao remota PENDENTE: em Authentication -> Email -> Templates -> Confirm
+sign up, salvar assunto Confirme seu e-mail - EquilibraFit++ e o HTML preparado.
+Em URL Configuration, Site URL equilibrafitplusplus://auth/login e redirects
+exatos de login/recovery. As ferramentas MCP nao editam esses campos e nao ha
+Management API token configurado. Arquivos locais/Render nao os publicam.
+Emails ja enviados conservam o link anterior. Nao desabilitar confirmacao.
+
+Testes desta etapa:
+- dotnet test do projeto Architecture em Release: 12 PASS, zero falhas finais.
+  Primeira execucao teve duas falhas do parser XML por DOCTYPE minusculo;
+  template corrigido e suite repetida. Quatro casos novos cobrem branding,
+  ConfirmationURL e os dois destinos Android. TRX em artifacts/test-results/email-confirmation.
+- flutter analyze: PASS, zero issues.
+- flutter test: 46 PASS, incluindo offline/outbox e autenticacao.
+- flutter build apk --debug com API HTTPS publicada: PASS. Aviso Kotlin
+  preexistente continua; nao foi alterado o toolchain nesta tarefa.
+- adb install -r emulator-5554: Success, dados locais preservados.
+- Package manager resolve /login e /recovery para MainActivity do debug
+  br.com.equilibrafit.app.plusplus.dev. URI de teste nao contem credencial.
+- Abertura quente de equilibrafitplusplus://auth/login: Status ok, rotulo
+  Entrar confirmado. Captura de abertura fria mostrou login, mas o Android
+  exibiu Process system isn't responding; duas esperas am start -W expiraram.
+  Nao certificar desempenho de abertura fria ou E2E real a partir deste teste.
+  Escolhido Wait, sem reiniciar emulador/apagar dados/fechar o aplicativo original.
+
+SHA256 do APK atual:
+A9014F39ED28FA64C540A0E79101028C96D20CE980BA3BD21B66A1847E5DC308.
+Artefatos APK/TRX/capturas ignorados pelo Git. Nenhum release, email enviado,
+conta confirmada, secret salvo, recurso pago, commit ou push nesta etapa.
+Backend completo/Python/Docker nao foram repetidos: runtime dessas camadas
+nao foi alterado. Confirmacao real e novo email com URL correta dependem da
+publicacao do template/URL pelo operador no Supabase.

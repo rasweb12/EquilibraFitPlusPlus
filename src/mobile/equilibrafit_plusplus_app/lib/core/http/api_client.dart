@@ -313,12 +313,22 @@ class ApiClient {
       );
     }
 
+    if (error.response == null &&
+        error.type == DioExceptionType.receiveTimeout) {
+      return AppFailure(
+        kDebugMode
+            ? 'O servidor demorou para responder. '
+                'API configurada: ${_dio.options.baseUrl}.'
+            : 'O servidor demorou para responder. Tente novamente em instantes.',
+        code: 'network_unavailable',
+      );
+    }
+
     if (error.response == null && _isConnectionFailure(error.type)) {
       return AppFailure(
         kDebugMode
             ? 'Não conseguimos conectar com a API agora. '
-                'API configurada: ${_dio.options.baseUrl}. '
-                'No celular físico, use o IP do computador na rede.'
+                'API configurada: ${_dio.options.baseUrl}.'
             : 'Não conseguimos conectar com a API agora. '
                 'Confira se ela está iniciada e tente novamente.',
         code: 'network_unavailable',
