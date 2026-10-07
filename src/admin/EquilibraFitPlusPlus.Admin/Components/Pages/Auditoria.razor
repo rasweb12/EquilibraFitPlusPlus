@@ -1,0 +1,101 @@
+@page "/auditoria"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Auditoria - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Auditoria" Subtitle="Eventos administrativos rastreaveis, sem tokens ou dados sensiveis.">
+        <MudStack Row="true" Spacing="2">
+            <MudTextField T="string" Placeholder="Entidade" @bind-Value="_entity" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FilterAlt" OnClick="SearchAsync">Filtrar</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" OnClick="ClearSearchAsync">Limpar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_audit is not null)
+    {
+        <MudTable Items="@_audit.Items" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Data</MudTh>
+                <MudTh>Acao</MudTh>
+                <MudTh>Entidade</MudTh>
+                <MudTh>IP</MudTh>
+                <MudTh>Metadados</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Data">@context.CriadoEm.LocalDateTime.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Acao">@context.Acao</MudTd>
+                <MudTd DataLabel="Entidade">@context.Entidade</MudTd>
+                <MudTd DataLabel="IP">@context.Ip</MudTd>
+                <MudTd DataLabel="Metadados"><MudText Typo="Typo.caption">@context.MetadadosJson</MudText></MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Nenhum evento encontrado para este filtro.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-4">
+            <MudText Typo="Typo.body2">Pagina @_page de @_audit.TotalPages - @_audit.TotalItems registros</MudText>
+            <MudStack Row="true" Spacing="1">
+                <MudButton Disabled="@(_page <= 1)" OnClick="PreviousAsync">Anterior</MudButton>
+                <MudButton Disabled="@(_audit.TotalPages <= _page)" OnClick="NextAsync">Proxima</MudButton>
+            </MudStack>
+        </MudStack>
+    }
+</AuthRequired>
+
+@code {
+    private const int PageSize = 20;
+    private PagedResult<AuditoriaResponse>? _audit;
+    private string? _entity;
+    private int _page = 1;
+    private bool _isLoading;
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        _entity = null;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        _page = Math.Max(1, _page - 1);
+        await LoadAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _audit = await Api.ListAuditAsync(_entity, _page, PageSize, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

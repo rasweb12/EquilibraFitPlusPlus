@@ -1,0 +1,76 @@
+@page "/gamificacao"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Gamificacao - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Gamificacao" Subtitle="Engajamento saudavel, sem incentivo a extremos.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/relatorios" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Assessment">Relatórios</MudButton>
+            <MudButton Href="/notificacoes" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Notifications">Notificar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Atualizar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_summary is not null)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" md="4">
+                <MetricCard Label="Usuários com sequência" Value="@_summary.UsuariosComSequencia.ToString()" Icon="@Icons.Material.Filled.LocalFireDepartment" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MetricCard Label="Conquistas liberadas" Value="@_summary.ConquistasDesbloqueadas.ToString()" Icon="@Icons.Material.Filled.EmojiEvents" Color="Color.Success" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MetricCard Label="Ranking monitorado" Value="@_summary.UsuariosEngajados.Count.ToString()" Icon="@Icons.Material.Filled.Leaderboard" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Usuários engajados</MudText>
+                    <MudTable Items="@_summary.UsuariosEngajados" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Usuario</MudTh>
+                            <MudTh>Nome</MudTh>
+                            <MudTh>Pontos</MudTh>
+                            <MudTh>Sequencia</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.UsuarioId</MudTd>
+                            <MudTd>@context.Nome</MudTd>
+                            <MudTd>@context.Pontos</MudTd>
+                            <MudTd>@context.SequenciaDias dias</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</AuthRequired>
+
+@code {
+    private GamificacaoAdminResumoResponse? _summary;
+    private bool _loading;
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _summary = await Api.GetAdminGamificationAsync(CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

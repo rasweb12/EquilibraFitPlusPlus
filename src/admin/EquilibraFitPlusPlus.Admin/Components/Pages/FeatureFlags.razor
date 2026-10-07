@@ -1,0 +1,205 @@
+@page "/feature-flags"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Feature flags - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Feature flags" Subtitle="Controle operacional com auditoria automatica pelo backend.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Atualizar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 status-panel" Elevation="0">
+                <MudText Typo="Typo.h6">Salvar flag</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Use chave estavel e JSON valido. Toda alteracao fica auditada.</MudText>
+                <MudStack Spacing="3" Class="mt-3">
+                    <MudTextField T="string" Label="Chave" @bind-Value="_key" Variant="Variant.Outlined" />
+                    <MudCheckBox T="bool" Label="Habilitada" @bind-Value="_enabled" Color="Color.Primary" />
+                    <MudTextField T="string" Label="Configuracao JSON" @bind-Value="_configurationJson" Variant="Variant.Outlined" Lines="6" />
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="_isSaving" OnClick="SaveAsync">
+                            Salvar
+                        </MudButton>
+                        <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" Disabled="_isSaving" OnClick="ClearForm">
+                            Cancelar
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 status-panel mt-3" Elevation="0">
+                <MudText Typo="Typo.h6">Modelos operacionais</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Preencha o formulario com flags comuns do produto.</MudText>
+                <MudStack Spacing="2" Class="mt-3">
+                    @foreach (FeatureFlagPreset preset in Presets)
+                    {
+                        <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Spacing="2">
+                                <div>
+                                    <MudText Typo="Typo.subtitle2">@preset.Label</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@preset.Key</MudText>
+                                </div>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => UsePreset(preset))">Usar</MudButton>
+                            </MudStack>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">@preset.Description</MudText>
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="8">
+            @if (_isLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_flags is not null)
+            {
+                <MudTable Items="@_flags.Items" Dense="true" Hover="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Chave</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Configuracao</MudTh>
+                        <MudTh>Atualizado em</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Chave">@context.Chave</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Color="@(context.Habilitada ? Color.Success : Color.Default)" Variant="Variant.Filled">
+                                @(context.Habilitada ? "Ativa" : "Inativa")
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Configuracao"><MudText Typo="Typo.caption">@context.ConfiguracaoJson</MudText></MudTd>
+                        <MudTd DataLabel="Atualizado">@((context.AtualizadoEm ?? context.CriadoEm).LocalDateTime.ToString("dd/MM/yyyy HH:mm"))</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => Edit(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>Nenhuma feature flag cadastrada.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+        </MudItem>
+    </MudGrid>
+</AuthRequired>
+
+@code {
+    private const int PageSize = 50;
+    private PagedResult<FeatureFlagResponse>? _flags;
+    private string _key = string.Empty;
+    private bool _enabled;
+    private string? _configurationJson;
+    private bool _isLoading;
+    private bool _isSaving;
+
+    private static readonly FeatureFlagPreset[] Presets =
+    [
+        new("ai.coach.enabled", "Coach IA", "Liga ou pausa respostas do Coach IA no app.", true, "{\"channel\":\"mobile\",\"mode\":\"hybrid\"}"),
+        new("ai.meal-recognition.enabled", "Reconhecimento de refeicoes", "Controla analise de imagens de refeicoes.", true, "{\"provider\":\"fastapi\",\"confidenceThreshold\":0.55}"),
+        new("notifications.in-app.enabled", "Notificacoes in-app", "Libera a caixa de entrada do usuario no mobile.", true, "{\"delivery\":\"in_app\"}"),
+        new("reports.export.enabled", "Exportacao de relatorios", "Controla exportacao CSV administrativa.", true, "{\"format\":\"csv\",\"scope\":\"admin_aggregate\"}"),
+        new("marketplace.enabled", "Marketplace", "Controla exibicao de parceiros e ofertas.", true, "{\"audience\":\"all\"}"),
+        new("premium.checkout.enabled", "Checkout premium", "Controla entrada de assinaturas premium.", false, "{\"provider\":\"manual\"}")
+    ];
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_key))
+        {
+            Snackbar.Add("Informe a chave da feature flag.", Severity.Warning);
+            return;
+        }
+
+        if (!IsValidJson(_configurationJson))
+        {
+            Snackbar.Add("Informe um JSON válido ou deixe a configuração vazia.", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await Api.SaveFeatureFlagAsync(new SalvarFeatureFlagRequest(_key, _enabled, _configurationJson), CancellationToken.None);
+            Snackbar.Add("Feature flag salva com auditoria.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Edit(FeatureFlagResponse flag)
+    {
+        _key = flag.Chave;
+        _enabled = flag.Habilitada;
+        _configurationJson = flag.ConfiguracaoJson;
+    }
+
+    private void ClearForm()
+    {
+        _key = string.Empty;
+        _enabled = false;
+        _configurationJson = null;
+    }
+
+    private void UsePreset(FeatureFlagPreset preset)
+    {
+        _key = preset.Key;
+        _enabled = preset.Enabled;
+        _configurationJson = preset.ConfigurationJson;
+    }
+
+    private static bool IsValidJson(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        try
+        {
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(value);
+            return document.RootElement.ValueKind is System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Array;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _flags = await Api.ListFeatureFlagsAsync(1, PageSize, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private sealed record FeatureFlagPreset(
+        string Key,
+        string Label,
+        string Description,
+        bool Enabled,
+        string ConfigurationJson);
+}

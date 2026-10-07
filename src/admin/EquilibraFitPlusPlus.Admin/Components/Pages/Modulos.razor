@@ -1,0 +1,242 @@
+@page "/modulos/{Slug}"
+
+<PageTitle>@_module.Title - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired>
+    <PageHeader Title="@_module.Title" Subtitle="@_module.Description">
+        <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+    </PageHeader>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
+        Este guia reúne rotinas administrativas que já abrem páginas operacionais do painel. Use os atalhos para consultar, editar, auditar e acompanhar indicadores.
+    </MudAlert>
+
+    <MudGrid Spacing="3">
+        @foreach (ModuleOperation operation in _module.Operations)
+        {
+            <MudItem xs="12" md="6" lg="4">
+                <MudPaper Class="pa-4 status-panel h-100" Elevation="0">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudIcon Icon="@operation.Icon" Color="@operation.Color" />
+                            <MudChip T="string" Color="@operation.Color" Variant="Variant.Outlined">@operation.Status</MudChip>
+                        </MudStack>
+                        <div>
+                            <MudText Typo="Typo.h6">@operation.Title</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@operation.Description</MudText>
+                        </div>
+                        <MudButton Href="@operation.Href" Variant="Variant.Filled" Color="@operation.Color" StartIcon="@Icons.Material.Filled.OpenInNew">
+                            @operation.Action
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        }
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 status-panel h-100" Elevation="0">
+                <MudText Typo="Typo.h6">Checklist operacional</MudText>
+                <MudList T="string" Dense="true">
+                    @foreach (string item in _module.Checklist)
+                    {
+                        <MudListItem Icon="@Icons.Material.Filled.CheckCircle">@item</MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 status-panel h-100" Elevation="0">
+                <MudText Typo="Typo.h6">Fluxo recomendado</MudText>
+                <MudList T="string" Dense="true">
+                    @foreach (string step in _module.Workflow)
+                    {
+                        <MudListItem Icon="@Icons.Material.Filled.ArrowForward">@step</MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</AuthRequired>
+
+@code {
+    /// <summary>Module slug from route.</summary>
+    [Parameter]
+    public string? Slug { get; set; }
+
+    private ModuleDescriptor _module = ModuleCatalog["acesso"];
+
+    private static readonly IReadOnlyDictionary<string, ModuleDescriptor> ModuleCatalog = new Dictionary<string, ModuleDescriptor>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["acesso"] = new(
+            "Acesso",
+            "Rotinas de suporte, sessão administrativa, usuários, flags e auditoria.",
+            [
+                new("Consultar usuários", "Localize contas por nome ou e-mail, veja status, perfil e papel administrativo.", "/usuarios", "Abrir usuários", Icons.Material.Filled.Group, Color.Primary),
+                new("Controlar feature flags", "Ative ou desative recursos com auditoria automática e configuração JSON validada.", "/feature-flags", "Abrir flags", Icons.Material.Filled.ToggleOn, Color.Secondary),
+                new("Auditar alterações", "Acompanhe eventos administrativos, entidade afetada, data, IP e metadados.", "/auditoria", "Abrir auditoria", Icons.Material.Filled.ManageSearch, Color.Info)
+            ],
+            [
+                "Pesquisar usuário antes de qualquer ação de suporte.",
+                "Registrar mudanças críticas por feature flag em vez de alterar dados manualmente.",
+                "Conferir auditoria depois de operações administrativas sensíveis."
+            ],
+            [
+                "Busque o usuário ou recurso afetado.",
+                "Execute a ação na página operacional correta.",
+                "Valide o registro em auditoria."
+            ]),
+        ["financeiro"] = new(
+            "Financeiro",
+            "Assinaturas premium, cupons e indicadores de receita.",
+            [
+                new("Gerenciar cupons", "Crie ou edite cupons por percentual ou valor fixo, com expiração e limite de uso.", "/financeiro", "Abrir financeiro", Icons.Material.Filled.LocalOffer, Color.Primary),
+                new("Acompanhar assinaturas", "Veja assinaturas, status, plano, período e provedor vinculados ao usuário.", "/financeiro", "Ver assinaturas", Icons.Material.Filled.WorkspacePremium, Color.Secondary),
+                new("Analisar receita", "Use relatórios para observar receita e atividade no período selecionado.", "/relatorios", "Abrir relatórios", Icons.Material.Filled.Assessment, Color.Info)
+            ],
+            [
+                "Evitar desconto percentual e valor fixo no mesmo cupom.",
+                "Definir expiração para campanhas temporárias.",
+                "Revisar receita em relatórios depois de campanhas."
+            ],
+            [
+                "Crie ou edite o cupom.",
+                "Acompanhe uso e assinaturas.",
+                "Consulte receita no relatório administrativo."
+            ]),
+        ["conteudo"] = new(
+            "Conteúdo",
+            "Curadoria operacional de comunicação, uso de refeições e evolução do produto.",
+            [
+                new("Enviar comunicação", "Envie mensagens acolhedoras para usuários selecionados, sem linguagem de culpa.", "/notificacoes", "Abrir notificações", Icons.Material.Filled.Notifications, Color.Primary),
+                new("Analisar uso", "Acompanhe refeições registradas, planos gerados, treinos e reconhecimento por imagem.", "/relatorios", "Abrir relatórios", Icons.Material.Filled.Assessment, Color.Info),
+                new("Liberar experiências", "Use feature flags para publicar conteúdo ou recursos progressivamente.", "/feature-flags", "Abrir flags", Icons.Material.Filled.ToggleOn, Color.Secondary)
+            ],
+            [
+                "Revisar linguagem antes de enviar notificações.",
+                "Medir adoção de conteúdo em relatórios.",
+                "Usar flags para ativação gradual."
+            ],
+            [
+                "Identifique a necessidade de comunicação.",
+                "Envie mensagem para o usuário correto.",
+                "Acompanhe resposta operacional em relatórios."
+            ]),
+        ["ia"] = new(
+            "IA",
+            "Coach IA, reconhecimento de refeições e controle de disponibilidade.",
+            [
+                new("Monitorar uso IA", "Veja sessões e mensagens de Coach IA nos indicadores administrativos.", "/", "Abrir dashboard", Icons.Material.Filled.Psychology, Color.Secondary),
+                new("Acompanhar reconhecimento", "Use relatórios para medir reconhecimentos por imagem e planos gerados.", "/relatorios", "Abrir relatórios", Icons.Material.Filled.ImageSearch, Color.Info),
+                new("Controlar rollout", "Ative recursos de IA por feature flags com configuração versionada.", "/feature-flags", "Abrir flags", Icons.Material.Filled.ToggleOn, Color.Primary)
+            ],
+            [
+                "Manter mensagens sempre orientativas e sem substituir profissionais de saúde.",
+                "Acompanhar volume de uso antes de ampliar o rollout.",
+                "Auditar alterações de flags ligadas à IA."
+            ],
+            [
+                "Verifique indicadores no dashboard.",
+                "Revise relatórios de uso.",
+                "Ajuste disponibilidade por feature flag."
+            ]),
+        ["parceiros"] = new(
+            "Parceiros",
+            "Cadastro, análise e acompanhamento de parceiros do marketplace.",
+            [
+                new("Gerenciar parceiros", "Crie, edite, filtre e acompanhe status de academias, nutricionistas, personal trainers e afiliados.", "/marketplace", "Abrir marketplace", Icons.Material.Filled.Handshake, Color.Primary),
+                new("Auditar mudanças", "Confirme registros de criação e edição de parceiros na auditoria.", "/auditoria", "Abrir auditoria", Icons.Material.Filled.ManageSearch, Color.Info),
+                new("Mensurar impacto", "Acompanhe indicadores gerais para avaliar crescimento do canal.", "/relatorios", "Abrir relatórios", Icons.Material.Filled.Assessment, Color.Secondary)
+            ],
+            [
+                "Cadastrar e manter documento quando aplicável.",
+                "Usar status para controlar análise, aprovação e suspensão.",
+                "Consultar auditoria após alterações relevantes."
+            ],
+            [
+                "Cadastre ou edite o parceiro.",
+                "Ajuste o status conforme análise.",
+                "Revise impacto operacional."
+            ]),
+        ["lgpd"] = new(
+            "LGPD",
+            "Privacidade, consentimentos, exportações e exclusões com rastreabilidade.",
+            [
+                new("Ver resumo LGPD", "Acompanhe consentimentos, exportações e solicitações de exclusão abertas.", "/lgpd", "Abrir LGPD", Icons.Material.Filled.PrivacyTip, Color.Primary),
+                new("Consultar usuário", "Localize o titular antes de orientar suporte ou solicitação de privacidade.", "/usuarios", "Abrir usuários", Icons.Material.Filled.Group, Color.Secondary),
+                new("Auditar eventos", "Revise eventos LGPD registrados pelo backend.", "/auditoria", "Abrir auditoria", Icons.Material.Filled.ManageSearch, Color.Info)
+            ],
+            [
+                "Tratar dados sensíveis com finalidade clara.",
+                "Conferir consentimentos antes de compartilhar dados.",
+                "Registrar exportações e exclusões em auditoria."
+            ],
+            [
+                "Identifique o titular.",
+                "Confirme a solicitação LGPD.",
+                "Valide o registro de auditoria."
+            ]),
+        ["logs"] = new(
+            "Logs",
+            "Trilha administrativa, investigação e suporte operacional.",
+            [
+                new("Auditoria administrativa", "Pesquise eventos por entidade, data e metadados de operação.", "/auditoria", "Abrir auditoria", Icons.Material.Filled.ManageSearch, Color.Primary),
+                new("Dashboard operacional", "Veja alertas e indicadores rápidos para triagem.", "/", "Abrir dashboard", Icons.Material.Filled.Dashboard, Color.Info),
+                new("Feature flags", "Correlacione alterações de flags com efeitos observados no produto.", "/feature-flags", "Abrir flags", Icons.Material.Filled.ToggleOn, Color.Secondary)
+            ],
+            [
+                "Começar investigação por auditoria.",
+                "Correlacionar eventos com alertas do dashboard.",
+                "Evitar expor tokens ou dados sensíveis em metadados."
+            ],
+            [
+                "Filtre a entidade afetada.",
+                "Revise evento, IP e metadados.",
+                "Aplique ação corretiva em página operacional."
+            ]),
+        ["monitoramento"] = new(
+            "Monitoramento",
+            "Indicadores de saúde do produto e rotinas de acompanhamento.",
+            [
+                new("Dashboard", "Acompanhe usuários, refeições, treinos, Coach IA, assinaturas e alertas.", "/", "Abrir dashboard", Icons.Material.Filled.Dashboard, Color.Primary),
+                new("Relatórios", "Filtre período e acompanhe atividade, receita e uso de IA.", "/relatorios", "Abrir relatórios", Icons.Material.Filled.Assessment, Color.Info),
+                new("Gamificação", "Observe sequências, conquistas e usuários engajados sem incentivar extremos.", "/gamificacao", "Abrir gamificação", Icons.Material.Filled.EmojiEvents, Color.Secondary)
+            ],
+            [
+                "Acompanhar alertas antes de agir.",
+                "Comparar métricas do dashboard com relatórios por período.",
+                "Usar gamificação apenas como incentivo saudável."
+            ],
+            [
+                "Revise alertas no dashboard.",
+                "Filtre relatórios do período.",
+                "Acompanhe engajamento saudável."
+            ])
+    };
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        _module = !string.IsNullOrWhiteSpace(Slug) && ModuleCatalog.TryGetValue(Slug, out ModuleDescriptor? module)
+            ? module
+            : ModuleCatalog["acesso"];
+    }
+
+    private sealed record ModuleDescriptor(
+        string Title,
+        string Description,
+        IReadOnlyCollection<ModuleOperation> Operations,
+        IReadOnlyCollection<string> Checklist,
+        IReadOnlyCollection<string> Workflow);
+
+    private sealed record ModuleOperation(
+        string Title,
+        string Description,
+        string Href,
+        string Action,
+        string Icon,
+        Color Color)
+    {
+        public string Status => "Operacional";
+    }
+}

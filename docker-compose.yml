@@ -1,0 +1,70 @@
+name: equilibrafit-plusplus
+
+services:
+  equilibrafit-plusplus-ai:
+    build:
+      context: ./src/ai/equilibrafit_plusplus_ai
+    environment:
+      PORT: 8001
+      EQUILIBRAFIT_AI_ENVIRONMENT: Production
+      EQUILIBRAFIT_AI_ENABLE_DOCS: "false"
+      EQUILIBRAFIT_AI_API_KEY: ${AI_INTERNAL_API_KEY:?Configure AI_INTERNAL_API_KEY in .env}
+      EQUILIBRAFIT_AI_OPENAI_API_KEY: ${EQUILIBRAFIT_AI_OPENAI_API_KEY:-}
+      EQUILIBRAFIT_AI_OPENAI_MODEL: ${EQUILIBRAFIT_AI_OPENAI_MODEL:-gpt-4.1-mini}
+      EQUILIBRAFIT_AI_REQUEST_TIMEOUT_SECONDS: ${EQUILIBRAFIT_AI_REQUEST_TIMEOUT_SECONDS:-60}
+      EQUILIBRAFIT_AI_AI_ENABLE_RAG: ${EQUILIBRAFIT_AI_AI_ENABLE_RAG:-true}
+      EQUILIBRAFIT_AI_AI_ENABLE_MEMORY: ${EQUILIBRAFIT_AI_AI_ENABLE_MEMORY:-true}
+    ports:
+      - "127.0.0.1:8001:8001"
+    restart: unless-stopped
+
+  equilibrafit-plusplus-api:
+    build:
+      context: .
+      dockerfile: src/backend/EquilibraFitPlusPlus.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      PORT: 8080
+      DATABASE_PROVIDER: PostgreSQL
+      SUPABASE_DB_CONNECTION_STRING: ${SUPABASE_DB_CONNECTION_STRING:?Configure the dedicated Supabase database in .env}
+      SUPABASE_URL: ${SUPABASE_URL:?Configure SUPABASE_URL in .env}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Configure SUPABASE_PUBLISHABLE_KEY in .env}
+      RUN_DB_MIGRATIONS: ${RUN_DB_MIGRATIONS:-true}
+      AiCoach__BaseUrl: http://equilibrafit-plusplus-ai:8001
+      AiCoach__ApiKey: ${AI_INTERNAL_API_KEY:?Configure AI_INTERNAL_API_KEY in .env}
+      AiCoach__TimeoutSeconds: ${AiCoach__TimeoutSeconds:-75}
+      ConnectionStrings__Redis: ${ConnectionStrings__Redis:-}
+      AdminBootstrap__Enabled: ${AdminBootstrap__Enabled:-false}
+      AdminBootstrap__SupabaseUserId: ${AdminBootstrap__SupabaseUserId:-00000000-0000-0000-0000-000000000000}
+      GooglePlay__Enabled: "false"
+    ports:
+      - "127.0.0.1:5158:8080"
+    depends_on:
+      equilibrafit-plusplus-ai:
+        condition: service_healthy
+    restart: unless-stopped
+
+  equilibrafit-plusplus-admin:
+    build:
+      context: .
+      dockerfile: src/admin/EquilibraFitPlusPlus.Admin/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      PORT: 8080
+      AdminApi__BaseUrl: http://equilibrafit-plusplus-api:8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      equilibrafit-plusplus-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    profiles: [cache]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 15s
+      timeout: 5s
+      retries: 3

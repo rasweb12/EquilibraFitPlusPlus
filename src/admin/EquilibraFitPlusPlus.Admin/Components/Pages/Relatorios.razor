@@ -1,0 +1,169 @@
+@page "/relatorios"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Relatórios - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Relatórios" Subtitle="Indicadores operacionais, uso e receita.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Atualizar</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileDownload" Disabled="@(_report is null)" OnClick="ExportCsvAsync">Exportar CSV</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    <MudPaper Class="pa-4 status-panel mb-4" Elevation="0">
+        <MudStack Row="true" AlignItems="AlignItems.End" Spacing="2" Class="flex-wrap">
+            <MudDatePicker Label="Inicio" @bind-Date="_start" DateFormat="dd/MM/yyyy" />
+            <MudDatePicker Label="Fim" @bind-Date="_end" DateFormat="dd/MM/yyyy" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search" OnClick="LoadAsync">Filtrar</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CalendarMonth" OnClick="Last30DaysAsync">30 dias</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" OnClick="ClearPeriodAsync">Limpar</MudButton>
+        </MudStack>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+            O CSV exporta os mesmos indicadores agregados carregados na tela, sem dados pessoais.
+        </MudText>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_report is not null)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Usuarios ativos" Value="@_report.UsuariosAtivos.ToString()" Icon="@Icons.Material.Filled.Group" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Novos usuarios" Value="@_report.NovosUsuarios.ToString()" Icon="@Icons.Material.Filled.PersonAdd" Color="Color.Success" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Receita" Value="@_report.Receita.ToString("C")" Icon="@Icons.Material.Filled.Payments" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Coach IA" Value="@_report.SessoesCoach.ToString()" Icon="@Icons.Material.Filled.Psychology" Color="Color.Secondary" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Atividade no periodo</MudText>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Refeicoes registradas</MudText>
+                            <MudText Typo="Typo.h5">@_report.RefeicoesRegistradas</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Planos gerados</MudText>
+                            <MudText Typo="Typo.h5">@_report.PlanosGerados</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Treinos ativos</MudText>
+                            <MudText Typo="Typo.h5">@_report.TreinosAtivos</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Reconhecimentos</MudText>
+                            <MudText Typo="Typo.h5">@_report.ReconhecimentosImagem</MudText>
+                        </MudItem>
+                    </MudGrid>
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mt-4">@_report.Mensagem</MudAlert>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</AuthRequired>
+
+@code {
+    private RelatorioAdminResumoResponse? _report;
+    private DateTime? _start = DateTime.Today.AddDays(-30);
+    private DateTime? _end = DateTime.Today;
+    private bool _loading;
+
+    private async Task Last30DaysAsync()
+    {
+        _start = DateTime.Today.AddDays(-30);
+        _end = DateTime.Today;
+        await LoadAsync();
+    }
+
+    private async Task ClearPeriodAsync()
+    {
+        _start = null;
+        _end = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            DateOnly? start = _start.HasValue ? DateOnly.FromDateTime(_start.Value) : null;
+            DateOnly? end = _end.HasValue ? DateOnly.FromDateTime(_end.Value) : null;
+            _report = await Api.GetAdminReportAsync(start, end, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_report is null)
+        {
+            Snackbar.Add("Carregue um relatorio antes de exportar.", Severity.Info);
+            return;
+        }
+
+        string fileName = $"equilibrafit-relatorio-{_report.Inicio:yyyyMMdd}-{_report.Fim:yyyyMMdd}.csv";
+        await JS.InvokeVoidAsync(
+            "equilibraFitDownloadText",
+            fileName,
+            BuildCsv(_report),
+            "text/csv;charset=utf-8");
+        Snackbar.Add("Relatorio exportado.", Severity.Success);
+    }
+
+    private static string BuildCsv(RelatorioAdminResumoResponse report)
+    {
+        var builder = new System.Text.StringBuilder();
+        AppendCsvRow(builder, "Indicador", "Valor");
+        AppendCsvRow(builder, "Inicio", report.Inicio.ToString("yyyy-MM-dd"));
+        AppendCsvRow(builder, "Fim", report.Fim.ToString("yyyy-MM-dd"));
+        AppendCsvRow(builder, "Usuarios ativos", report.UsuariosAtivos.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Novos usuarios", report.NovosUsuarios.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Receita", report.Receita.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Sessoes Coach IA", report.SessoesCoach.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Refeicoes registradas", report.RefeicoesRegistradas.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Planos gerados", report.PlanosGerados.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Treinos ativos", report.TreinosAtivos.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Reconhecimentos por imagem", report.ReconhecimentosImagem.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Mensagem", report.Mensagem);
+        return builder.ToString();
+    }
+
+    private static void AppendCsvRow(System.Text.StringBuilder builder, params string[] cells)
+    {
+        builder.AppendLine(string.Join(";", cells.Select(EscapeCsv)));
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.Contains(';', StringComparison.Ordinal) ||
+            value.Contains('"', StringComparison.Ordinal) ||
+            value.Contains('\n', StringComparison.Ordinal) ||
+            value.Contains('\r', StringComparison.Ordinal))
+        {
+            return $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+        }
+
+        return value;
+    }
+}

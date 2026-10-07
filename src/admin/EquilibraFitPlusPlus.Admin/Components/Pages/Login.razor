@@ -1,0 +1,84 @@
+@page "/login"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Entrar - EquilibraFit++ Admin</PageTitle>
+
+<MudGrid Justify="Justify.Center" Class="mt-8">
+    <MudItem xs="12" sm="10" md="6" lg="4">
+        <MudPaper Class="pa-6 status-panel" Elevation="0">
+            <MudStack Spacing="3">
+                <div>
+                    <MudText Typo="Typo.h4">Admin</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Acesso restrito para operacao, suporte e governanca.</MudText>
+                </div>
+
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    Use uma conta com role Administrador.
+                </MudAlert>
+
+                <MudTextField T="string" Label="E-mail" @bind-Value="_email" Variant="Variant.Outlined" InputType="InputType.Email" Immediate="true" />
+                <MudTextField T="string" Label="Senha" @bind-Value="_password" Variant="Variant.Outlined" InputType="InputType.Password" Immediate="true" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Login"
+                           Disabled="_isLoading"
+                           OnClick="SubmitAsync">
+                    Entrar
+                </MudButton>
+
+                @if (!string.IsNullOrWhiteSpace(_error))
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@_error</MudAlert>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private bool _isLoading;
+    private string? _error;
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        if (Session.IsAuthenticated && Session.IsAdmin)
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _error = "Informe e-mail e senha para continuar.";
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            await Api.LoginAsync(_email, _password, CancellationToken.None);
+            Snackbar.Add("Sessao administrativa iniciada.", Severity.Success);
+            Navigation.NavigateTo("/");
+        }
+        catch (AdminApiException exception)
+        {
+            _error = exception.Message;
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

@@ -1,0 +1,148 @@
+@page "/lgpd"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>LGPD - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="LGPD" Subtitle="Operação de privacidade, consentimento e rastreabilidade.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/usuarios" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Group">Usuários</MudButton>
+            <MudButton Href="/auditoria" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ManageSearch">Auditoria</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileDownload" Disabled="@(_summary is null)" OnClick="ExportCsvAsync">Exportar CSV</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Atualizar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_summary is not null)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Usuários ativos" Value="@_summary.UsuariosAtivos.ToString()" Icon="@Icons.Material.Filled.Group" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Consentimentos" Value="@_summary.ConsentimentosRegistrados.ToString()" Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Success" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Exportacoes 30 dias" Value="@_summary.ExportacoesUltimos30Dias.ToString()" Icon="@Icons.Material.Filled.FileDownload" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MetricCard Label="Exclusoes abertas" Value="@_summary.SolicitacoesExclusaoAbertas.ToString()" Icon="@Icons.Material.Filled.PrivacyTip" Color="Color.Warning" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Resumo operacional</MudText>
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">@_summary.Mensagem</MudAlert>
+                    <MudDivider Class="my-4" />
+                    <MudList T="string" Dense="true">
+                        <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Exportacao de dados disponivel para usuarios autenticados.</MudListItem>
+                        <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Solicitacao de exclusao exige confirmacao explicita.</MudListItem>
+                        <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Eventos LGPD sao registrados em auditoria administrativa.</MudListItem>
+                    </MudList>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Acoes LGPD</MudText>
+                    <MudGrid Spacing="2" Class="mt-2">
+                        <MudItem xs="12" md="4">
+                            <MudPaper Class="pa-3 h-100" Elevation="0" Outlined="true">
+                                <MudText Typo="Typo.subtitle1">Atender titular</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Localize a conta e confirme identidade antes de orientar exportacao ou exclusao.</MudText>
+                                <MudButton Href="/usuarios" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Group" Class="mt-2">Localizar usuario</MudButton>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudPaper Class="pa-3 h-100" Elevation="0" Outlined="true">
+                                <MudText Typo="Typo.subtitle1">Auditar evento</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Revise exportacoes, solicitacoes e operacoes sensiveis registradas pelo backend.</MudText>
+                                <MudButton Href="/auditoria" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ManageSearch" Class="mt-2">Abrir auditoria</MudButton>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudPaper Class="pa-3 h-100" Elevation="0" Outlined="true">
+                                <MudText Typo="Typo.subtitle1">Registrar evidencia</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Exporte o resumo agregado para anexar ao acompanhamento operacional.</MudText>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileDownload" OnClick="ExportCsvAsync" Class="mt-2">Exportar resumo</MudButton>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</AuthRequired>
+
+@code {
+    private LgpdAdminResumoResponse? _summary;
+    private bool _loading;
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _summary = await Api.GetAdminLgpdAsync(CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_summary is null)
+        {
+            Snackbar.Add("Carregue o resumo LGPD antes de exportar.", Severity.Info);
+            return;
+        }
+
+        await JS.InvokeVoidAsync(
+            "equilibraFitDownloadText",
+            $"equilibrafit-lgpd-{DateTime.UtcNow:yyyyMMddHHmmss}.csv",
+            BuildCsv(_summary),
+            "text/csv;charset=utf-8");
+        Snackbar.Add("Resumo LGPD exportado.", Severity.Success);
+    }
+
+    private static string BuildCsv(LgpdAdminResumoResponse summary)
+    {
+        var builder = new System.Text.StringBuilder();
+        AppendCsvRow(builder, "Indicador", "Valor");
+        AppendCsvRow(builder, "Usuarios ativos", summary.UsuariosAtivos.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Consentimentos registrados", summary.ConsentimentosRegistrados.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Exportacoes ultimos 30 dias", summary.ExportacoesUltimos30Dias.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Solicitacoes exclusao abertas", summary.SolicitacoesExclusaoAbertas.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendCsvRow(builder, "Mensagem", summary.Mensagem);
+        return builder.ToString();
+    }
+
+    private static void AppendCsvRow(System.Text.StringBuilder builder, params string[] cells)
+    {
+        builder.AppendLine(string.Join(";", cells.Select(EscapeCsv)));
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.Contains(';', StringComparison.Ordinal) ||
+            value.Contains('"', StringComparison.Ordinal) ||
+            value.Contains('\n', StringComparison.Ordinal) ||
+            value.Contains('\r', StringComparison.Ordinal))
+        {
+            return $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+        }
+
+        return value;
+    }
+}

@@ -1,0 +1,90 @@
+services:
+  - type: web
+    name: equilibrafit-plusplus-ai
+    runtime: docker
+    branch: main
+    plan: free
+    region: oregon
+    dockerfilePath: ./src/ai/equilibrafit_plusplus_ai/Dockerfile
+    dockerContext: ./src/ai/equilibrafit_plusplus_ai
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8001"
+      - key: EQUILIBRAFIT_AI_ENVIRONMENT
+        value: Production
+      - key: EQUILIBRAFIT_AI_ENABLE_DOCS
+        value: "false"
+      - key: EQUILIBRAFIT_AI_API_KEY
+        generateValue: true
+      - key: EQUILIBRAFIT_AI_OPENAI_API_KEY
+        sync: false
+      - key: EQUILIBRAFIT_AI_OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: EQUILIBRAFIT_AI_REQUEST_TIMEOUT_SECONDS
+        value: "60"
+
+  - type: web
+    name: equilibrafit-plusplus-api
+    runtime: docker
+    branch: main
+    plan: free
+    region: oregon
+    dockerfilePath: ./src/backend/EquilibraFitPlusPlus.Api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_PROVIDER
+        value: PostgreSQL
+      - key: RUN_DB_MIGRATIONS
+        value: "true"
+      - key: SUPABASE_DB_CONNECTION_STRING
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: AiCoach__BaseUrl
+        fromService:
+          type: web
+          name: equilibrafit-plusplus-ai
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: AiCoach__ApiKey
+        fromService:
+          type: web
+          name: equilibrafit-plusplus-ai
+          envVarKey: EQUILIBRAFIT_AI_API_KEY
+      - key: AiCoach__TimeoutSeconds
+        value: "75"
+      - key: AdminBootstrap__Enabled
+        value: "false"
+      - key: GooglePlay__Enabled
+        value: "false"
+
+  - type: web
+    name: equilibrafit-plusplus-admin
+    runtime: docker
+    branch: main
+    plan: free
+    region: oregon
+    dockerfilePath: ./src/admin/EquilibraFitPlusPlus.Admin/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: PORT
+        value: "8080"
+      - key: AdminApi__BaseUrl
+        fromService:
+          type: web
+          name: equilibrafit-plusplus-api
+          envVarKey: RENDER_EXTERNAL_URL

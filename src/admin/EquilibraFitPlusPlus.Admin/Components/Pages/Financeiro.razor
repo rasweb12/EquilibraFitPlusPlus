@@ -1,0 +1,164 @@
+@page "/financeiro"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Financeiro - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Financeiro" Subtitle="Premium, assinaturas e cupons operacionais.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Atualizar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Novo cupom</MudText>
+                    <MudTextField Label="Codigo" @bind-Value="_couponCode" Margin="Margin.Dense" />
+                    <MudNumericField T="decimal?" Label="Percentual" @bind-Value="_couponPercent" Margin="Margin.Dense" />
+                    <MudNumericField T="decimal?" Label="Valor fixo" @bind-Value="_couponValue" Margin="Margin.Dense" />
+                    <MudDatePicker Label="Expira em" @bind-Date="_couponExpiresAt" DateFormat="dd/MM/yyyy" Margin="Margin.Dense" />
+                    <MudNumericField T="int?" Label="Uso maximo" @bind-Value="_couponMaxUse" Margin="Margin.Dense" />
+                    <MudStack Row="true" Spacing="2" Class="mt-3">
+                        <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="_isSaving" OnClick="SaveCouponAsync">Salvar</MudButton>
+                        <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" Disabled="_isSaving" OnClick="ClearCouponForm">Cancelar</MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Cupons</MudText>
+                    <MudTable Items="@(_coupons?.Items ?? [])" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Codigo</MudTh>
+                            <MudTh>Desconto</MudTh>
+                            <MudTh>Expira em</MudTh>
+                            <MudTh>Uso</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Codigo</MudTd>
+                            <MudTd>@(context.PercentualDesconto?.ToString("0.##") ?? context.ValorDesconto?.ToString("C") ?? "-")</MudTd>
+                            <MudTd>@(context.ExpiraEm?.ToString("dd/MM/yyyy") ?? "sem data")</MudTd>
+                            <MudTd>@context.UsoAtual / @(context.UsoMaximo?.ToString() ?? "sem limite")</MudTd>
+                            <MudTd><MudChip T="string" Color="@(context.Ativo ? Color.Success : Color.Default)" Variant="Variant.Outlined">@(context.Ativo ? "Ativo" : "Inativo")</MudChip></MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCoupon(context))" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Assinaturas</MudText>
+                    <MudTable Items="@(_subscriptions?.Items ?? [])" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Usuario</MudTh>
+                            <MudTh>Plano</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Periodo</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.UsuarioId</MudTd>
+                            <MudTd>@context.PlanoCodigo</MudTd>
+                            <MudTd>@context.Status</MudTd>
+                            <MudTd>@context.InicioEm.ToString("dd/MM/yyyy") - @(context.TerminaEm?.ToString("dd/MM/yyyy") ?? "atual")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</AuthRequired>
+
+@code {
+    private PagedResult<AssinaturaResumoResponse>? _subscriptions;
+    private PagedResult<CupomResponse>? _coupons;
+    private string _couponCode = string.Empty;
+    private decimal? _couponPercent;
+    private decimal? _couponValue;
+    private DateTime? _couponExpiresAt;
+    private int? _couponMaxUse;
+    private bool _loading;
+    private bool _isSaving;
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _subscriptions = await Api.ListSubscriptionsAsync(1, 20, CancellationToken.None);
+            _coupons = await Api.ListCouponsAsync(1, 20, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveCouponAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_couponCode))
+        {
+            Snackbar.Add("Informe o codigo do cupom.", Severity.Warning);
+            return;
+        }
+
+        if (_couponPercent.HasValue == _couponValue.HasValue)
+        {
+            Snackbar.Add("Informe percentual ou valor fixo, apenas um deles.", Severity.Warning);
+            return;
+        }
+
+        DateOnly? expiresAt = _couponExpiresAt.HasValue ? DateOnly.FromDateTime(_couponExpiresAt.Value) : null;
+        _isSaving = true;
+        try
+        {
+            await Api.SaveCouponAsync(new SalvarCupomRequest(_couponCode, _couponPercent, _couponValue, expiresAt, _couponMaxUse), CancellationToken.None);
+            Snackbar.Add("Cupom salvo.", Severity.Success);
+            ClearCouponForm();
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void EditCoupon(CupomResponse coupon)
+    {
+        _couponCode = coupon.Codigo;
+        _couponPercent = coupon.PercentualDesconto;
+        _couponValue = coupon.ValorDesconto;
+        _couponExpiresAt = coupon.ExpiraEm?.ToDateTime(TimeOnly.MinValue);
+        _couponMaxUse = coupon.UsoMaximo;
+    }
+
+    private void ClearCouponForm()
+    {
+        _couponCode = string.Empty;
+        _couponPercent = null;
+        _couponValue = null;
+        _couponExpiresAt = null;
+        _couponMaxUse = null;
+    }
+}

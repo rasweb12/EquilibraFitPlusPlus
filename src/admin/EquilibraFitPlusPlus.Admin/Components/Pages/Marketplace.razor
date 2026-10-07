@@ -1,0 +1,150 @@
+@page "/marketplace"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Marketplace - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Marketplace" Subtitle="Parceiros, profissionais e afiliados.">
+        <MudStack Row="true" Spacing="2">
+            <MudTextField T="string" Placeholder="Nome ou e-mail" @bind-Value="_term" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search" OnClick="SearchAsync">Buscar</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" OnClick="ClearSearchAsync">Limpar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 status-panel" Elevation="0">
+                <MudText Typo="Typo.h6">@(_partnerId.HasValue ? "Editar parceiro" : "Novo parceiro")</MudText>
+                <MudTextField Label="Nome" @bind-Value="_name" Margin="Margin.Dense" />
+                <MudSelect T="string" Label="Tipo" @bind-Value="_type" Margin="Margin.Dense">
+                    <MudSelectItem Value="@("Academia")">Academia</MudSelectItem>
+                    <MudSelectItem Value="@("Nutricionista")">Nutricionista</MudSelectItem>
+                    <MudSelectItem Value="@("PersonalTrainer")">Personal trainer</MudSelectItem>
+                    <MudSelectItem Value="@("Afiliado")">Afiliado</MudSelectItem>
+                </MudSelect>
+                <MudSelect T="string" Label="Status" @bind-Value="_status" Margin="Margin.Dense">
+                    <MudSelectItem Value="@("Rascunho")">Rascunho</MudSelectItem>
+                    <MudSelectItem Value="@("EmAnalise")">Em analise</MudSelectItem>
+                    <MudSelectItem Value="@("Aprovado")">Aprovado</MudSelectItem>
+                    <MudSelectItem Value="@("Suspenso")">Suspenso</MudSelectItem>
+                </MudSelect>
+                <MudTextField Label="E-mail" @bind-Value="_email" Margin="Margin.Dense" />
+                <MudTextField Label="Documento" @bind-Value="_document" Margin="Margin.Dense" />
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="_isSaving" OnClick="SaveAsync">Salvar</MudButton>
+                    <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" Disabled="_isSaving" OnClick="ClearForm">Cancelar</MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4 status-panel" Elevation="0">
+                <MudText Typo="Typo.h6">Parceiros</MudText>
+                <MudTable Items="@(_partners?.Items ?? [])" Dense="true" Hover="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Nome</MudTh>
+                        <MudTh>Tipo</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Contato</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Nome</MudTd>
+                        <MudTd>@context.Tipo</MudTd>
+                        <MudTd><MudChip T="string" Variant="Variant.Outlined">@context.Status</MudChip></MudTd>
+                        <MudTd>@(context.EmailContato ?? "-")</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => Edit(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>Nenhum parceiro encontrado para este filtro.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</AuthRequired>
+
+@code {
+    private PagedResult<ParceiroResponse>? _partners;
+    private Guid? _partnerId;
+    private string? _term;
+    private string _name = string.Empty;
+    private string _type = "Academia";
+    private string _status = "Rascunho";
+    private string? _email;
+    private string? _document;
+    private bool _isSaving;
+
+    private async Task SearchAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        _term = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _partners = await Api.ListPartnersAsync(_term, 1, 50, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            Snackbar.Add("Informe o nome do parceiro.", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await Api.SavePartnerAsync(new SalvarParceiroRequest(_partnerId, _name, _type, _status, _email, _document), CancellationToken.None);
+            Snackbar.Add("Parceiro salvo.", Severity.Success);
+            ClearForm();
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Edit(ParceiroResponse partner)
+    {
+        _partnerId = partner.Id;
+        _name = partner.Nome;
+        _type = partner.Tipo;
+        _status = partner.Status;
+        _email = partner.EmailContato;
+        _document = partner.Documento;
+    }
+
+    private void ClearForm()
+    {
+        _partnerId = null;
+        _name = string.Empty;
+        _type = "Academia";
+        _status = "Rascunho";
+        _email = null;
+        _document = null;
+    }
+}

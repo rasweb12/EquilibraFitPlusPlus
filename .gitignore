@@ -1,0 +1,77 @@
+# .NET
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+*.pdb
+*.dll
+
+# Build e publicação
+.codex-build/
+publish/
+artifacts/
+TestResults/
+
+# Visual Studio / Rider
+.idea/
+*.DotSettings.user
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+coverage/
+
+# Android
+**/android/.gradle/
+**/android/local.properties
+**/android/key.properties
+*.jks
+*.keystore
+bugreport-*.zip
+*.pem
+*.p12
+*.pfx
+**/.kotlin/
+
+# iOS / macOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/macos/Pods/
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+Certificate/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.venv/
+.tools/
+service-account*.json
+google-play-credentials*.json
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini

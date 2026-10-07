@@ -1,0 +1,61 @@
+@inject AdminSessionState Session
+
+@if (!_isReady)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (Session.IsAuthenticated && Session.IsAdmin)
+{
+    @ChildContent
+}
+else
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+        Sessao administrativa necessaria. Entre novamente para continuar.
+    </MudAlert>
+    <MudButton Href="/login" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Login" Class="mt-4">
+        Entrar
+    </MudButton>
+}
+
+@code {
+    /// <summary>Protected content.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Callback invoked once the administrative session is available.</summary>
+    [Parameter]
+    public EventCallback OnAuthenticated { get; set; }
+
+    private bool _isReady;
+    private bool _authenticatedCallbackInvoked;
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        if (!Session.IsAuthenticated)
+        {
+            await Session.RestoreAsync(CancellationToken.None);
+        }
+
+        _isReady = true;
+        await InvokeAuthenticatedCallbackAsync();
+        StateHasChanged();
+    }
+
+    private async Task InvokeAuthenticatedCallbackAsync()
+    {
+        if (_authenticatedCallbackInvoked || !OnAuthenticated.HasDelegate || !Session.IsAuthenticated || !Session.IsAdmin)
+        {
+            return;
+        }
+
+        _authenticatedCallbackInvoked = true;
+        await OnAuthenticated.InvokeAsync();
+    }
+}

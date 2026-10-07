@@ -1,0 +1,24 @@
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-5" Spacing="2">
+    <div>
+        <MudText Typo="Typo.h4">@Title</MudText>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@Subtitle</MudText>
+        }
+    </div>
+    @ChildContent
+</MudStack>
+
+@code {
+    /// <summary>Page title.</summary>
+    [Parameter]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Optional page subtitle.</summary>
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    /// <summary>Optional action content.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

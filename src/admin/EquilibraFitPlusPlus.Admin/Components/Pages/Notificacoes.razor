@@ -1,0 +1,180 @@
+@page "/notificacoes"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Notificações - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Notificações" Subtitle="Comunicação cuidadosa e sem julgamento com os usuários.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Atualizar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
+        As notificacoes enviadas aqui aparecem na caixa de entrada do app mobile, acessivel pelo sino no Dashboard. O usuario pode marcar cada mensagem como lida.
+    </MudAlert>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 status-panel" Elevation="0">
+                <MudText Typo="Typo.h6">Nova notificação</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Selecione um usuario recente ou cole o Id do usuario de suporte.</MudText>
+                <MudTextField Label="Usuário Id" @bind-Value="_userId" Margin="Margin.Dense" />
+                <MudTextField Label="Título" @bind-Value="_title" Margin="Margin.Dense" />
+                <MudTextField Label="Mensagem" @bind-Value="_message" Lines="4" Margin="Margin.Dense" />
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Send" Disabled="_isSending" OnClick="CreateAsync">Enviar</MudButton>
+                    <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" Disabled="_isSending" OnClick="@(() => ClearForm())">Cancelar</MudButton>
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 status-panel mt-3" Elevation="0">
+                <MudText Typo="Typo.h6">Usuários recentes</MudText>
+                <MudTable Items="@(_users?.Items ?? [])" Dense="true" Hover="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Nome</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <MudText Typo="Typo.body2">@context.Nome</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Email</MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => SelectUser(context))">Usar</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Typo="Typo.body2">Nenhum usuário carregado.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4 status-panel" Elevation="0">
+                <MudText Typo="Typo.h6">Ultimas notificacoes</MudText>
+                @if (_loading)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <MudTable Items="@(_notifications?.Items ?? [])" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Titulo</MudTh>
+                            <MudTh>Usuario</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Mensagem</MudTh>
+                            <MudTh>Criada em</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Titulo</MudTd>
+                            <MudTd>@context.UsuarioId</MudTd>
+                            <MudTd><MudChip T="string" Color="@NotificationStatusColor(context.Status)" Variant="Variant.Outlined">@context.Status</MudChip></MudTd>
+                            <MudTd>
+                                <MudText Typo="Typo.body2">@TrimMessage(context.Mensagem)</MudText>
+                            </MudTd>
+                            <MudTd>@context.CriadoEm.LocalDateTime.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>Nenhuma notificacao enviada ainda.</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</AuthRequired>
+
+@code {
+    private PagedResult<NotificacaoResponse>? _notifications;
+    private PagedResult<AdminUsuarioResumoResponse>? _users;
+    private string _userId = string.Empty;
+    private string _title = string.Empty;
+    private string _message = "Sem problemas. Podemos ajustar e continuar juntos.";
+    private bool _loading;
+    private bool _isSending;
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _notifications = await Api.ListNotificationsAsync(1, 50, CancellationToken.None);
+            _users = await Api.ListUsersAsync(null, 1, 10, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!Guid.TryParse(_userId, out Guid userId))
+        {
+            Snackbar.Add("Informe um Usuário Id válido.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_title) || string.IsNullOrWhiteSpace(_message))
+        {
+            Snackbar.Add("Informe título e mensagem da notificação.", Severity.Warning);
+            return;
+        }
+
+        _isSending = true;
+        try
+        {
+            await Api.CreateNotificationAsync(new CriarNotificacaoRequest(userId, _title, _message), CancellationToken.None);
+            Snackbar.Add("Notificacao enviada para a caixa de entrada do app.", Severity.Success);
+            ClearForm(keepUser: true);
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isSending = false;
+        }
+    }
+
+    private void SelectUser(AdminUsuarioResumoResponse user)
+    {
+        _userId = user.Id.ToString();
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            _title = "Vamos continuar no seu ritmo";
+        }
+    }
+
+    private void ClearForm(bool keepUser = false)
+    {
+        if (!keepUser)
+        {
+            _userId = string.Empty;
+        }
+
+        _title = string.Empty;
+        _message = "Sem problemas. Podemos ajustar e continuar juntos.";
+    }
+
+    private static Color NotificationStatusColor(string status)
+    {
+        return status.Equals("Lida", StringComparison.OrdinalIgnoreCase) ? Color.Success : Color.Warning;
+    }
+
+    private static string TrimMessage(string message)
+    {
+        return message.Length <= 96 ? message : string.Concat(message.AsSpan(0, 93), "...");
+    }
+}

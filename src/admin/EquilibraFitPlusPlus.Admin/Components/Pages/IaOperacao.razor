@@ -1,0 +1,326 @@
+@page "/ia-operacao"
+@inject AdminApiClient Api
+@inject ISnackbar Snackbar
+
+<PageTitle>Operacao IA - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Operacao IA" Subtitle="Acompanhe a IA, publique instrucoes versionadas e teste respostas antes de ativar.">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" Disabled="_isLoading" OnClick="LoadAsync">Atualizar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_operation is not null)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Status FastAPI" Value="@StatusText" Icon="@Icons.Material.Filled.CloudDone" Color="@StatusColor" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Latencia" Value="@LatencyText" Icon="@Icons.Material.Filled.Speed" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Modelo ativo" Value="@_operation.Servico.Modelo" Icon="@Icons.Material.Filled.Memory" Color="Color.Secondary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Versao ensino" Value="@_operation.Ensino.Versao" Icon="@Icons.Material.Filled.Verified" Color="Color.Tertiary" />
+            </MudItem>
+        </MudGrid>
+
+        <MudAlert Severity="@(_operation.Servico.Online ? Severity.Success : Severity.Warning)" Variant="Variant.Outlined" Class="mt-4">
+            @_operation.Servico.Mensagem
+            @if (!string.IsNullOrWhiteSpace(_operation.Servico.BaseUrl))
+            {
+                <span> Base: @_operation.Servico.BaseUrl</span>
+            }
+        </MudAlert>
+
+        <MudGrid Spacing="3" Class="mt-1">
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Sessoes hoje" Value="@_operation.Metricas.SessoesCoachHoje.ToString()" Icon="@Icons.Material.Filled.Forum" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Mensagens hoje" Value="@_operation.Metricas.MensagensCoachHoje.ToString()" Icon="@Icons.Material.Filled.Chat" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Reconhecimentos" Value="@_operation.Metricas.ReconhecimentosImagemHoje.ToString()" Icon="@Icons.Material.Filled.CenterFocusStrong" Color="Color.Secondary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Planos hoje" Value="@_operation.Metricas.PlanosGeradosHoje.ToString()" Icon="@Icons.Material.Filled.RestaurantMenu" Color="Color.Success" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Treinos hoje" Value="@_operation.Metricas.TreinosGeradosHoje.ToString()" Icon="@Icons.Material.Filled.FitnessCenter" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Fallbacks hoje" Value="@_operation.Metricas.FallbacksHoje.ToString()" Icon="@Icons.Material.Filled.SyncProblem" Color="Color.Warning" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Bloqueios 30d" Value="@_operation.Metricas.RespostasBloqueadas30Dias.ToString()" Icon="@Icons.Material.Filled.Security" Color="Color.Error" />
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="3" Class="mt-1">
+            <MudItem xs="12" lg="7">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Spacing="2">
+                        <div>
+                            <MudText Typo="Typo.h6">Central de ensino</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Edite instrucoes aprovadas, teste o rascunho e publique com auditoria.</MudText>
+                        </div>
+                        <MudChip T="string" Color="@(_operation.Ensino.Publicada ? Color.Success : Color.Warning)" Variant="Variant.Filled">
+                            @(_operation.Ensino.Publicada ? "Publicada" : "Base inicial")
+                        </MudChip>
+                    </MudStack>
+
+                    <MudStack Spacing="3" Class="mt-4">
+                        <MudTextField T="string" Label="Instrucoes do Coach IA" @bind-Value="_instructionsCoach" Variant="Variant.Outlined" Lines="5" />
+                        <MudTextField T="string" Label="Regras de alimentacao" @bind-Value="_foodRules" Variant="Variant.Outlined" Lines="4" />
+                        <MudTextField T="string" Label="Regras de treino" @bind-Value="_workoutRules" Variant="Variant.Outlined" Lines="4" />
+                        <MudTextField T="string" Label="Base de conhecimento aprovada" @bind-Value="_knowledgeBase" Variant="Variant.Outlined" Lines="5" />
+                        <MudTextField T="string" Label="Exemplos de boas respostas" @bind-Value="_goodExamples" Variant="Variant.Outlined" Lines="4" />
+                        <MudTextField T="string" Label="Observacao da versao" @bind-Value="_publishNote" Variant="Variant.Outlined" Lines="2" />
+
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                            O ensino operacional usa instrucoes versionadas e conhecimento aprovado. O modelo nao e treinado diretamente pelo Admin.
+                        </MudAlert>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Publish" Disabled="_isPublishing" OnClick="PublishAsync">
+                                Publicar
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Restore" Disabled="_isPublishing" OnClick="ResetDraft">
+                                Cancelar
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" lg="5">
+                <MudPaper Class="pa-4 status-panel" Elevation="0">
+                    <MudText Typo="Typo.h6">Teste antes de publicar</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Digite uma pergunta e veja como a IA responderia com o rascunho atual.</MudText>
+                    <MudStack Spacing="3" Class="mt-3">
+                        <MudTextField T="string" Label="Pergunta de teste" @bind-Value="_testQuestion" Variant="Variant.Outlined" Lines="4" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="_isTesting" OnClick="TestAsync">
+                            Testar rascunho
+                        </MudButton>
+                        @if (_testResult is not null)
+                        {
+                            <MudAlert Severity="@(_testResult.UsouFallback ? Severity.Warning : Severity.Success)" Variant="Variant.Outlined">
+                                <MudText Typo="Typo.subtitle2">Modelo: @_testResult.Modelo</MudText>
+                                <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@_testResult.Resposta</MudText>
+                            </MudAlert>
+                            <MudList T="string" Dense="true">
+                                @foreach (string warning in _testResult.Avisos)
+                                {
+                                    <MudListItem Icon="@Icons.Material.Filled.Info">@warning</MudListItem>
+                                }
+                            </MudList>
+                        }
+                    </MudStack>
+                </MudPaper>
+
+                <MudPaper Class="pa-4 status-panel mt-3" Elevation="0">
+                    <MudText Typo="Typo.h6">Versoes publicadas</MudText>
+                    @if (_versions.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">Nenhuma versao publicada ainda.</MudText>
+                    }
+                    else
+                    {
+                        <MudTable Items="@_versions" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Versao</MudTh>
+                                <MudTh>Publicada em</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Versao">@context.Versao</MudTd>
+                                <MudTd DataLabel="Publicada">@context.PublicadaEm.LocalDateTime.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                                <MudTd>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Restore" OnClick="@(() => RestoreAsync(context.Versao))">
+                                        Restaurar
+                                    </MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Class="pa-4 status-panel mt-4" Elevation="0">
+            <MudText Typo="Typo.h6">Historico sanitizado</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Eventos recentes sem e-mail, documentos ou textos longos do usuario.</MudText>
+            <MudTable Items="@_operation.Historico" Dense="true" Hover="true" Elevation="0" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>Tipo</MudTh>
+                    <MudTh>Resumo</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Modelo</MudTh>
+                    <MudTh>Criado em</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Tipo">@context.Tipo</MudTd>
+                    <MudTd DataLabel="Resumo">@context.Resumo</MudTd>
+                    <MudTd DataLabel="Status">@context.Status</MudTd>
+                    <MudTd DataLabel="Modelo">@context.Modelo</MudTd>
+                    <MudTd DataLabel="Criado em">@context.CriadoEm.LocalDateTime.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>Nenhum evento de IA registrado ainda.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    }
+</AuthRequired>
+
+@code {
+    private AdminIaOperacaoResponse? _operation;
+    private IReadOnlyCollection<AdminIaEnsinoVersaoResponse> _versions = [];
+    private TestarAdminIaEnsinoResponse? _testResult;
+    private string _instructionsCoach = string.Empty;
+    private string _foodRules = string.Empty;
+    private string _workoutRules = string.Empty;
+    private string _knowledgeBase = string.Empty;
+    private string _goodExamples = string.Empty;
+    private string? _publishNote;
+    private string _testQuestion = "Comi algo fora do planejado hoje. Como devo continuar?";
+    private bool _isLoading;
+    private bool _isPublishing;
+    private bool _isTesting;
+
+    private string StatusText => _operation?.Servico.Online == true ? "Online" : "Offline";
+
+    private Color StatusColor => _operation?.Servico.Online == true ? Color.Success : Color.Warning;
+
+    private string LatencyText => _operation?.Servico.LatenciaMs is int milliseconds ? $"{milliseconds} ms" : "N/D";
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _operation = await Api.GetIaOperationAsync(CancellationToken.None);
+            _versions = await Api.ListIaTeachingVersionsAsync(CancellationToken.None);
+            ResetDraft();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task PublishAsync()
+    {
+        if (!DraftIsValid())
+        {
+            return;
+        }
+
+        _isPublishing = true;
+        try
+        {
+            await Api.PublishIaTeachingAsync(
+                new PublicarAdminIaEnsinoRequest(_instructionsCoach, _foodRules, _workoutRules, _knowledgeBase, _goodExamples, _publishNote),
+                CancellationToken.None);
+            Snackbar.Add("Instrucoes da IA publicadas com auditoria.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isPublishing = false;
+        }
+    }
+
+    private async Task TestAsync()
+    {
+        if (!DraftIsValid() || string.IsNullOrWhiteSpace(_testQuestion))
+        {
+            Snackbar.Add("Informe a pergunta de teste e mantenha os campos de ensino preenchidos.", Severity.Warning);
+            return;
+        }
+
+        _isTesting = true;
+        _testResult = null;
+        try
+        {
+            _testResult = await Api.TestIaTeachingAsync(
+                new TestarAdminIaEnsinoRequest(_testQuestion, _instructionsCoach, _foodRules, _workoutRules, _knowledgeBase, _goodExamples),
+                CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isTesting = false;
+        }
+    }
+
+    private async Task RestoreAsync(string version)
+    {
+        _isPublishing = true;
+        try
+        {
+            await Api.RestoreIaTeachingAsync(new RestaurarAdminIaEnsinoRequest(version, "Restaurado pelo Admin"), CancellationToken.None);
+            Snackbar.Add("Versao restaurada como nova publicacao.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isPublishing = false;
+        }
+    }
+
+    private void ResetDraft()
+    {
+        if (_operation is null)
+        {
+            return;
+        }
+
+        _instructionsCoach = _operation.Ensino.InstrucoesCoach;
+        _foodRules = _operation.Ensino.RegrasAlimentacao;
+        _workoutRules = _operation.Ensino.RegrasTreino;
+        _knowledgeBase = _operation.Ensino.BaseConhecimento;
+        _goodExamples = _operation.Ensino.ExemplosBoasRespostas;
+        _publishNote = null;
+        _testResult = null;
+    }
+
+    private bool DraftIsValid()
+    {
+        if (string.IsNullOrWhiteSpace(_instructionsCoach)
+            || string.IsNullOrWhiteSpace(_foodRules)
+            || string.IsNullOrWhiteSpace(_workoutRules)
+            || string.IsNullOrWhiteSpace(_knowledgeBase)
+            || string.IsNullOrWhiteSpace(_goodExamples))
+        {
+            Snackbar.Add("Preencha todos os campos de ensino antes de continuar.", Severity.Warning);
+            return false;
+        }
+
+        return true;
+    }
+}

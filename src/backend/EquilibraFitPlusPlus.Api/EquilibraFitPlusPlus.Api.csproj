@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>equilibrafit-plusplus-api-local</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EquilibraFitPlusPlus.Application\EquilibraFitPlusPlus.Application.csproj" />
+    <ProjectReference Include="..\EquilibraFitPlusPlus.Infrastructure\EquilibraFitPlusPlus.Infrastructure.csproj" />
+    <ProjectReference Include="..\EquilibraFitPlusPlus.Contracts\EquilibraFitPlusPlus.Contracts.csproj" />
+    <ProjectReference Include="..\EquilibraFitPlusPlus.Shared\EquilibraFitPlusPlus.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,95 @@
+@page "/"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Dashboard" Subtitle="Indicadores operacionais com dados minimizados para suporte e governanca.">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">
+            Atualizar
+        </MudButton>
+    </PageHeader>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@_error</MudAlert>
+    }
+    else if (_dashboard is not null)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Usuarios totais" Value="@_dashboard.UsuariosTotal.ToString()" Icon="@Icons.Material.Filled.Group" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Usuarios ativos" Value="@_dashboard.UsuariosAtivos.ToString()" Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Success" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Perfis preenchidos" Value="@_dashboard.PerfisPreenchidos.ToString()" Icon="@Icons.Material.Filled.AssignmentInd" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Refeicoes hoje" Value="@_dashboard.RefeicoesHoje.ToString()" Icon="@Icons.Material.Filled.Restaurant" Color="Color.Warning" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Treinos ativos" Value="@_dashboard.TreinosAtivos.ToString()" Icon="@Icons.Material.Filled.FitnessCenter" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Sessoes Coach hoje" Value="@_dashboard.SessoesCoachHoje.ToString()" Icon="@Icons.Material.Filled.Psychology" Color="Color.Secondary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Mensagens Coach" Value="@_dashboard.MensagensCoachHoje.ToString()" Icon="@Icons.Material.Filled.Chat" Color="Color.Info" />
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MetricCard Label="Assinaturas ativas" Value="@_dashboard.AssinaturasAtivas.ToString()" Icon="@Icons.Material.Filled.WorkspacePremium" Color="Color.Tertiary" />
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Class="pa-4 mt-4 status-panel" Elevation="0">
+            <MudText Typo="Typo.h6">Alertas operacionais</MudText>
+            @if (_dashboard.Alertas.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Sem alertas operacionais agora. Podemos seguir acompanhando.</MudText>
+            }
+            else
+            {
+                <MudList T="string" Dense="true">
+                    @foreach (string alerta in _dashboard.Alertas)
+                    {
+                        <MudListItem Icon="@Icons.Material.Filled.Info">@alerta</MudListItem>
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    }
+</AuthRequired>
+
+@code {
+    private AdminDashboardResponse? _dashboard;
+    private bool _isLoading;
+    private string? _error;
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            _dashboard = await Api.GetDashboardAsync(CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            _error = exception.Message;
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

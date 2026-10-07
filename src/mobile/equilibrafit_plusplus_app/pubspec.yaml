@@ -1,0 +1,36 @@
+name: equilibrafit_plusplus_app
+description: EquilibraFit++ mobile application.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  cupertino_icons: ^1.0.8
+  dio: ^5.8.0+1
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  flutter_secure_storage: ^9.2.4
+  go_router: ^14.8.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  image_picker: ^1.1.2
+  in_app_purchase: ^3.3.1
+  crypto: ^3.0.6
+  intl: ^0.20.2
+  path: ^1.9.1
+  sqflite: ^2.4.1
+
+dev_dependencies:
+  sqflite_common_ffi: ^2.4.0
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+  test: ^1.26.3
+
+flutter:
+  uses-material-design: true

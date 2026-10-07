@@ -1,0 +1,138 @@
+@page "/usuarios"
+@inject AdminApiClient Api
+@inject AdminSessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Usuários - EquilibraFit++ Admin</PageTitle>
+
+<AuthRequired OnAuthenticated="LoadAsync">
+    <PageHeader Title="Usuários" Subtitle="Consulta de suporte com dados minimizados.">
+        <MudStack Row="true" Spacing="2">
+            <MudTextField T="string" Placeholder="Nome ou e-mail" @bind-Value="_term" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search" OnClick="SearchAsync">Buscar</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear" OnClick="ClearSearchAsync">Limpar</MudButton>
+        </MudStack>
+    </PageHeader>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_users is null)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Use a busca para consultar usuarios.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="@_users.Items" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Nome</MudTh>
+                <MudTh>E-mail</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Role</MudTh>
+                <MudTh>Perfil</MudTh>
+                <MudTh>Criado em</MudTh>
+                <MudTh>Ações</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Nome">@context.Nome</MudTd>
+                <MudTd DataLabel="E-mail">@context.Email</MudTd>
+                <MudTd DataLabel="Status"><MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">@context.Status</MudChip></MudTd>
+                <MudTd DataLabel="Role">@context.Role</MudTd>
+                <MudTd DataLabel="Perfil">@(context.PerfilPreenchido ? "Completo" : "Pendente")</MudTd>
+                <MudTd DataLabel="Criado em">@context.CriadoEm.LocalDateTime.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Ações">
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Outlined"
+                               Color="Color.Warning"
+                               StartIcon="@Icons.Material.Filled.Logout"
+                               Disabled="@(_revokingUserId == context.Id)"
+                               OnClick="@(() => RevokeSessionsAsync(context))">
+                        Deslogar
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Nenhum usuario encontrado para este filtro.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-4">
+            <MudText Typo="Typo.body2">Pagina @_page de @_users.TotalPages - @_users.TotalItems registros</MudText>
+            <MudStack Row="true" Spacing="1">
+                <MudButton Disabled="@(_page <= 1)" OnClick="PreviousAsync">Anterior</MudButton>
+                <MudButton Disabled="@(_users.TotalPages <= _page)" OnClick="NextAsync">Proxima</MudButton>
+            </MudStack>
+        </MudStack>
+    }
+</AuthRequired>
+
+@code {
+    private const int PageSize = 20;
+    private PagedResult<AdminUsuarioResumoResponse>? _users;
+    private string? _term;
+    private int _page = 1;
+    private bool _isLoading;
+    private Guid? _revokingUserId;
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        _term = null;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        _page = Math.Max(1, _page - 1);
+        await LoadAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _users = await Api.ListUsersAsync(_term, _page, PageSize, CancellationToken.None);
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RevokeSessionsAsync(AdminUsuarioResumoResponse user)
+    {
+        _revokingUserId = user.Id;
+        try
+        {
+            RevogarSessoesUsuarioResponse response = await Api.RevokeUserSessionsAsync(user.Id, CancellationToken.None);
+            Snackbar.Add(response.Mensagem, response.SessoesRevogadas > 0 ? Severity.Success : Severity.Info);
+            await LoadAsync();
+        }
+        catch (AdminApiException exception)
+        {
+            Snackbar.Add(exception.Message, Severity.Warning);
+        }
+        finally
+        {
+            _revokingUserId = null;
+        }
+    }
+}
