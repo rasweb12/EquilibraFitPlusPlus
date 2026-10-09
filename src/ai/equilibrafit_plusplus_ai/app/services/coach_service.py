@@ -29,7 +29,6 @@ class CoachService:
         feature="coach",
         system_prompt=COACH_SYSTEM_PROMPT,
         user_prompt=user_prompt,
-        #model=request.model,
         )
         fallback_used = content is None
         if content is None:

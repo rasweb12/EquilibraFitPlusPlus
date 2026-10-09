@@ -4,7 +4,7 @@ from time import perf_counter
 
 from app.core.config import Settings
 from app.prompts.loader import load_prompt
-from app.providers.openai_provider import OpenAiTextProvider
+from app.providers.ai_provider_router import AiProviderRouter
 from app.rag.knowledge_base import RetrievalResult, retrieve_workout_knowledge
 from app.schemas.common import SafetyNotice
 from app.schemas.workouts import (
@@ -23,7 +23,7 @@ class WorkoutService:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._openai = OpenAiTextProvider(settings)
+        self._openai = AiProviderRouter(settings)
 
     async def generate(self, request: WorkoutGenerateRequest) -> WorkoutGenerateResponse:
         """Generate a workout plan proposal with AI and hybrid fallback."""
@@ -75,7 +75,11 @@ class WorkoutService:
             f"RETRIEVED KNOWLEDGE JSON\n{retrieved_knowledge}\n\n"
             f"OPERATIONAL GUIDANCE\n{request.operational_guidance or 'usar padrão seguro do produto'}"
         )
-        payload = await self._openai.complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        payload = await self._provider.complete_json(
+            feature="workouts",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
         if payload is None:
             return None
 

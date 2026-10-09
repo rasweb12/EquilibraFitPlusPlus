@@ -4,7 +4,7 @@ import re
 import unicodedata
 
 from app.core.config import Settings
-from app.providers.openai_provider import OpenAiTextProvider
+from app.providers.ai_provider_router import AiProviderRouter
 from app.schemas.meals import (
     MealRecognizeRequest,
     MealRecognizeResponse,
@@ -23,7 +23,7 @@ class MealRecognitionService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._safety = SafetyService()
-        self._openai = OpenAiTextProvider(settings)
+        self._openai = AiProviderRouter(settings)
         self._model = self._load_yolo_model(settings.yolo_model_path)
 
     async def recognize(self, request: MealRecognizeRequest) -> MealRecognizeResponse:
@@ -115,10 +115,10 @@ class MealRecognitionService:
             "\"message\":string"
             "}"
         )
-        payload = await self._openai.analyze_image_json(
+        payload = await self._provider.complete_json(
+            feature="meal_text",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            image_base64=request.image_base64,
         )
         if payload is None:
             return None
@@ -151,8 +151,12 @@ class MealRecognitionService:
             "\"fallback_used\":false,"
             "\"message\":string"
             "}"
+        payload = await self._provider.analyze_image_json(
+            feature="meals",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            image_base64=request.image_base64,
         )
-        payload = await self._openai.complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
         if payload is None:
             return None
 

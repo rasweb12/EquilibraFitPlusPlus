@@ -1,5 +1,5 @@
 from app.core.config import Settings
-from app.providers.openai_provider import OpenAiTextProvider
+from app.providers.ai_provider_router import AiProviderRouter
 from app.schemas.common import MacroTargets, SafetyNotice
 from app.schemas.plans import MealSuggestion, PlanGenerateRequest, PlanGenerateResponse
 
@@ -9,14 +9,13 @@ class PlanService:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._openai = OpenAiTextProvider(settings)
+        self._openai = AiProviderRouter(settings)
 
     async def generate(self, request: PlanGenerateRequest) -> PlanGenerateResponse:
         """Generate an AI plan proposal with deterministic hybrid fallback."""
-        if self._openai.is_configured:
-            generated = await self._generate_with_openai(request)
-            if generated is not None:
-                return generated
+        generated = await self._generate_with_ai(request)
+        if generated is not None:
+            return generated
 
         return self._generate_hybrid(request)
 
@@ -46,7 +45,11 @@ class PlanService:
             "\"fallback_used\":false"
             "}"
         )
-        payload = await self._openai.complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        payload = await self._provider.complete_json(
+            feature="plans",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
         if payload is None:
             return None
 
@@ -57,8 +60,8 @@ class PlanService:
 
         bounded_calories = min(max(response.targets.calories, request.min_calories), request.max_calories)
         response.targets.calories = bounded_calories
-        response.model = self._settings.openai_model
-        response.fallback_used = False
+        response.model = self._provider.last_model or self._settings.openai_model
+        response.fallback_used = self._provider.fallback_used
         response.safety_notices.append(
             SafetyNotice(message="Esta proposta não substitui nutricionista ou médico.", requires_professional_review=False)
         )

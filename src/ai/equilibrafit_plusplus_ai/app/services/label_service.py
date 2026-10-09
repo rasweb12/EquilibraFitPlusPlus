@@ -2,7 +2,7 @@ import re
 import unicodedata
 
 from app.core.config import Settings
-from app.providers.openai_provider import OpenAiTextProvider
+from app.providers.ai_provider_router import AiProviderRouter
 from app.schemas.labels import LabelRecognizeRequest, LabelRecognizeResponse
 
 
@@ -11,7 +11,7 @@ class LabelRecognitionService:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._openai = OpenAiTextProvider(settings)
+        self._openai = AiProviderRouter(settings)
 
     async def recognize(self, request: LabelRecognizeRequest) -> LabelRecognizeResponse:
         """Recognize a nutrition label."""
@@ -68,7 +68,8 @@ class LabelRecognitionService:
             "\"message\":string"
             "}"
         )
-        payload = await self._openai.analyze_image_json(
+        payload = await self._provider.analyze_image_json(
+            feature="labels",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             image_base64=image_base64,
