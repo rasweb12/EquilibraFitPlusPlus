@@ -1,4 +1,5 @@
 using EquilibraFitPlusPlus.Api.Middleware;
+using EquilibraFitPlusPlus.Application.Abstractions.Billing;
 using EquilibraFitPlusPlus.Contracts.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -64,6 +65,28 @@ public sealed class ExceptionHandlingMiddlewareTests
         var error = await JsonSerializer.DeserializeAsync<ApiErrorResponse>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Equal("unexpected_error", error!.Code);
         Assert.DoesNotContain("fixture-unexpected-cancellation", error.Message);
+    }
+
+    [Theory]
+    [InlineData("billing.not_configured", 503)]
+    [InlineData("billing.provider_unavailable", 503)]
+    [InlineData("billing.acknowledgement_failed", 503)]
+    [InlineData("billing.provider_timeout", 504)]
+    [InlineData("billing.provider_invalid_response", 502)]
+    [InlineData("billing.owner_mismatch", 400)]
+    [InlineData("billing.verification_failed", 400)]
+    public async Task BillingFailure_UsesAppropriateHttpStatus(string code, int status)
+    {
+        var context = new DefaultHttpContext();
+        using var body = new MemoryStream();
+        context.Response.Body = body;
+        var middleware = new ExceptionHandlingMiddleware(_ => throw new BillingValidationException(code, "Safe billing message."),
+            NullLogger<ExceptionHandlingMiddleware>.Instance);
+        await middleware.InvokeAsync(context);
+        Assert.Equal(status, context.Response.StatusCode);
+        body.Position = 0;
+        var error = await JsonSerializer.DeserializeAsync<ApiErrorResponse>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(code, error!.Code);
     }
 
     private sealed class StartedResponseFeature : HttpResponseFeature

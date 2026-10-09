@@ -32,9 +32,24 @@ public sealed class GooglePlayBillingProvider(
             $"applications/{Uri.EscapeDataString(options.PackageName)}/purchases/subscriptionsv2/tokens/{Uri.EscapeDataString(purchaseToken)}", ct);
         using var response = await SendWithoutSensitiveErrorsAsync(request, ct);
         if (!response.IsSuccessStatusCode)
+        {
+            if ((int)response.StatusCode is 401 or 403 or 429 or >= 500)
+                throw new BillingValidationException("billing.provider_unavailable", "Google Play temporariamente indisponivel.");
             throw new BillingValidationException("billing.verification_failed", "Nao foi possivel validar a compra no Google Play.");
-        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        var root = json.RootElement;
+        }
+        try
+        {
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            return ParseSubscription(json.RootElement, accountId);
+        }
+        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new BillingValidationException("billing.provider_invalid_response", "Nao foi possivel consultar a assinatura. Tente novamente.");
+        }
+    }
+
+    private VerifiedSubscription ParseSubscription(JsonElement root, string accountId)
+    {
         if (!root.TryGetProperty("externalAccountIdentifiers", out var account) ||
             !account.TryGetProperty("obfuscatedExternalAccountId", out var accountValue) ||
             !string.Equals(accountValue.GetString(), accountId, StringComparison.Ordinal))
@@ -92,8 +107,19 @@ public sealed class GooglePlayBillingProvider(
 
     private async Task<HttpRequestMessage> RequestAsync(HttpMethod method, string path, CancellationToken ct)
     {
+        string accessToken;
+        try { accessToken = await credentials.GetAsync(ct); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new BillingValidationException("billing.provider_timeout", "Google Play temporariamente indisponivel.");
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Credential errors can contain private endpoints; only propagate a safe billing error.
+            throw new BillingValidationException("billing.provider_unavailable", "Google Play temporariamente indisponivel.");
+        }
         var request = new HttpRequestMessage(method, new Uri("https://androidpublisher.googleapis.com/androidpublisher/v3/" + path));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await credentials.GetAsync(ct));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         return request;
     }
 }

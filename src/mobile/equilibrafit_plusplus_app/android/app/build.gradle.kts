@@ -69,6 +69,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (!plusplusApplicationId.isNullOrBlank() && plusplusApplicationId != originalApplicationId) {
+                applicationIdSuffix = ".dev"
+            }
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
         }

@@ -1,4 +1,8 @@
+
 services:
+  # ==================================================
+  # AI SERVICE — OPENAI + GOOGLE GEMINI
+  # ==================================================
   - type: web
     name: equilibrafit-plusplus-ai
     runtime: docker
@@ -11,19 +15,79 @@ services:
     envVars:
       - key: PORT
         value: "8001"
+
       - key: EQUILIBRAFIT_AI_ENVIRONMENT
         value: Production
+
       - key: EQUILIBRAFIT_AI_ENABLE_DOCS
         value: "false"
+
+      # Chave interna entre API .NET e serviço Python
       - key: EQUILIBRAFIT_AI_API_KEY
         generateValue: true
+
+      # ----------------------------------------------
+      # OPENAI
+      # ----------------------------------------------
       - key: EQUILIBRAFIT_AI_OPENAI_API_KEY
         sync: false
+
       - key: EQUILIBRAFIT_AI_OPENAI_MODEL
         value: gpt-4.1-mini
+
+      # ----------------------------------------------
+      # GOOGLE GEMINI
+      # ----------------------------------------------
+      - key: EQUILIBRAFIT_AI_GEMINI_API_KEY
+        sync: false
+
+      - key: EQUILIBRAFIT_AI_GEMINI_MODEL
+        value: gemini-2.5-flash
+
+      # ----------------------------------------------
+      # PROVIDER CONFIGURATION
+      # ----------------------------------------------
+      - key: EQUILIBRAFIT_AI_PROVIDER
+        value: openai
+
+      # Seleção por funcionalidade
+      - key: EQUILIBRAFIT_AI_COACH_PROVIDER
+        value: openai
+
+      - key: EQUILIBRAFIT_AI_WORKOUTS_PROVIDER
+        value: openai
+
+      - key: EQUILIBRAFIT_AI_PLANS_PROVIDER
+        value: gemini
+
+      - key: EQUILIBRAFIT_AI_MEALS_PROVIDER
+        value: gemini
+
+      - key: EQUILIBRAFIT_AI_MEAL_TEXT_PROVIDER
+        value: gemini
+
+      - key: EQUILIBRAFIT_AI_LABELS_PROVIDER
+        value: gemini
+
+      # ----------------------------------------------
+      # FALLBACK
+      # ----------------------------------------------
+      # Ativar somente após validar ambos os provedores
+      - key: EQUILIBRAFIT_AI_FALLBACK_ENABLED
+        value: "false"
+
+      - key: EQUILIBRAFIT_AI_FALLBACK_PROVIDER
+        value: gemini
+
+      # ----------------------------------------------
+      # REQUEST CONFIGURATION
+      # ----------------------------------------------
       - key: EQUILIBRAFIT_AI_REQUEST_TIMEOUT_SECONDS
         value: "60"
 
+  # ==================================================
+  # BACKEND API — .NET + SUPABASE + GOOGLE PLAY
+  # ==================================================
   - type: web
     name: equilibrafit-plusplus-api
     runtime: docker
@@ -36,37 +100,82 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+
       - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
         value: "true"
+
       - key: PORT
         value: "8080"
+
       - key: DATABASE_PROVIDER
         value: PostgreSQL
+
       - key: RUN_DB_MIGRATIONS
         value: "true"
+
+      # ----------------------------------------------
+      # SUPABASE
+      # ----------------------------------------------
       - key: SUPABASE_DB_CONNECTION_STRING
         sync: false
+
       - key: SUPABASE_URL
         sync: false
+
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
+
+      # ----------------------------------------------
+      # AI GATEWAY
+      # ----------------------------------------------
       - key: AiCoach__BaseUrl
         fromService:
           type: web
           name: equilibrafit-plusplus-ai
           envVarKey: RENDER_EXTERNAL_URL
+
       - key: AiCoach__ApiKey
         fromService:
           type: web
           name: equilibrafit-plusplus-ai
           envVarKey: EQUILIBRAFIT_AI_API_KEY
+
       - key: AiCoach__TimeoutSeconds
         value: "75"
+
+      # ----------------------------------------------
+      # ADMIN
+      # ----------------------------------------------
       - key: AdminBootstrap__Enabled
         value: "false"
-      - key: GooglePlay__Enabled
-        value: "false"
 
+      # ----------------------------------------------
+      # GOOGLE PLAY BILLING
+      # ----------------------------------------------
+      - key: GooglePlay__Enabled
+        sync: false
+
+      - key: GOOGLE_PLAY_PACKAGE_NAME
+        value: br.com.equilibrafit.app.plusplus
+
+      - key: GOOGLE_PLAY_PRODUCT_IDS
+        sync: false
+
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/google-play.json
+
+      - key: BILLING_TOKEN_ENCRYPTION_KEY
+        sync: false
+
+      - key: GOOGLE_PLAY_PUBSUB_AUDIENCE
+        value: https://equilibrafit-plusplus-api-4lkw.onrender.com/api/v1/billing/google-play/notifications
+
+      - key: GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL
+        sync: false
+
+  # ==================================================
+  # ADMIN PANEL
+  # ==================================================
   - type: web
     name: equilibrafit-plusplus-admin
     runtime: docker
@@ -79,10 +188,13 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+
       - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
         value: "true"
+
       - key: PORT
         value: "8080"
+
       - key: AdminApi__BaseUrl
         fromService:
           type: web

@@ -532,3 +532,124 @@ conta confirmada, secret salvo, recurso pago, commit ou push nesta etapa.
 Backend completo/Python/Docker nao foram repetidos: runtime dessas camadas
 nao foi alterado. Confirmacao real e novo email com URL correta dependem da
 publicacao do template/URL pelo operador no Supabase.
+
+## Preparacao De Assinaturas E Release - 2026-10-07
+
+Escopo desta etapa: preparar o release independente e corrigir falhas de Billing.
+Nao declarar Beta pronta: keystore Android, produtos/credenciais Play, sandbox
+e deploy do codigo novo continuam pendentes. Original e Vero nao alterados.
+
+### Alteracoes
+
+- ID autorizado pelo operador: br.com.equilibrafit.app.plusplus, configurado
+  em android/gradle.properties. Debug recebe .dev e preserva a identidade
+  br.com.equilibrafit.app.plusplus.dev. Release nunca usa a chave debug.
+- Mobile preserva entitlement obtido do servidor durante falhas da loja,
+  impede comandos concorrentes, trata erros de purchase stream/restore/buy
+  e somente completa recibos com resposta valida e productId correspondente.
+  Nao existe desbloqueio local/falso de Premium nem produto ficticio publicado.
+- Backend valida configuracao habilitada antes do startup. Falhas de credenciais
+  e transporte Google nao propagam detalhes privados; outages/ack retornam 503,
+  timeout 504, resposta invalida 502, compra/owner invalidos 400.
+- Blueprint preparado para escolha manual GooglePlay__Enabled e secrets,
+  package aprovado, audience RTDN HTTPS e ADC em /etc/secrets/google-play.json.
+  Nao modifica variaveis reais do Render nem cria produtos/conta Google/PubSub.
+- Script de release executa pub get/analyze/test antes de APK e AAB, com
+  preflight HTTPS/assinatura e interrupcao na primeira falha. Caminho de
+  keystore no exemplo corrigido para absoluto, sem credencial verdadeira.
+- SQLite/offline/outbox/sync/conflitos/IA e regras de negocio preservados.
+
+Criados:
+```text
+docs/android-release.md
+scripts/Build-AndroidRelease.ps1
+tests/EquilibraFitPlusPlus.Architecture.Tests/Deployment/AndroidReleaseConfigurationTests.cs
+tests/EquilibraFitPlusPlus.Infrastructure.IntegrationTests/Billing/GooglePlayOptionsTests.cs
+tests/EquilibraFitPlusPlus.Infrastructure.IntegrationTests/Billing/GooglePlayBillingProviderTests.cs
+```
+
+Adaptados:
+```text
+.env.example
+render.yaml
+docs/google-play-billing.md
+docs/render.md
+docs/validation.md
+src/backend/EquilibraFitPlusPlus.Api/Middleware/ExceptionHandlingMiddleware.cs
+src/backend/EquilibraFitPlusPlus.Infrastructure/Billing/GooglePlayOptions.cs
+src/backend/EquilibraFitPlusPlus.Infrastructure/Billing/GooglePlayBillingProvider.cs
+src/mobile/equilibrafit_plusplus_app/android/app/build.gradle.kts
+src/mobile/equilibrafit_plusplus_app/android/gradle.properties
+src/mobile/equilibrafit_plusplus_app/android/key.properties.example
+src/mobile/equilibrafit_plusplus_app/lib/features/premium/data/google_play_billing.dart
+src/mobile/equilibrafit_plusplus_app/lib/features/premium/presentation/pages/premium_page.dart
+src/mobile/equilibrafit_plusplus_app/test/features/premium/google_play_billing_test.dart
+tests/EquilibraFitPlusPlus.Api.IntegrationTests/Middleware/ExceptionHandlingMiddlewareTests.cs
+```
+
+Nenhum arquivo copiado, removido ou descartado; nenhuma dependencia ou migration
+adicionada/removida. Google Play Billing nativo continua na versao 8.0.0 trazida
+pelo plugin resolvido, sem upgrade amplo de dependencias. Nenhum secret real
+escrito, conta criada, email enviado, compra executada ou infraestrutura paga.
+
+### Verificacoes
+
+| Comando/check | Resultado |
+| --- | --- |
+| dotnet restore | PASS |
+| dotnet build -c Release --no-restore | PASS, zero erros/avisos no build final incremental |
+| dotnet test -c Release --no-build | 227 PASS, 2 SKIP, zero falhas |
+| flutter pub get | PASS, sem alteracao de versoes |
+| flutter analyze | PASS apos corrigir sete avisos de estilo novos |
+| flutter test | 56 PASS, incluindo 14 testes Billing |
+| Ruff check | PASS |
+| pytest | 26 PASS |
+| scripts/validate_deployment.py | PASS nos schemas oficiais Render/Compose |
+| Script release: parser, HTTP/loopback e assinatura ausente | PASS, bloqueios esperados |
+| flutter build apk --release com API HTTPS | BLOQUEADO: credenciais de assinatura ausentes |
+| docker compose config | INDISPONIVEL: docker nao encontrado |
+| docker compose build/up | NAO EXECUTADOS: Docker ausente |
+| API /health/ready, AI /health, Admin /health publicados | HTTPS 200 nos tres |
+| git diff --check e triagem de chaves privadas nos arquivos alterados/novos | PASS |
+
+TRX conferidos: artifacts/test-results/release-check, seis arquivos, 229 casos,
+227 aprovados e dois ignorados. SKIPs: PostgreSqlMigrationTests e SupabaseRlsTests,
+sem TEST_POSTGRES_CONNECTION_STRING/TEST_SUPABASE_DB_CONNECTION_STRING dedicadas.
+Nunca executar esses testes destrutivos contra o banco real da Beta.
+O primeiro build focado exibiu CS1591 existentes e nos testes publicos novos;
+nao confundir o build incremental sem avisos com eliminacao de toda essa divida.
+Triagem de chaves privadas nao equivale a auditoria completa de secrets.
+
+### Bloqueios E Proximos Passos
+
+Certificate contem apenas prod-ca-2021.crt, CA TLS do banco, nao keystore Android.
+Nao havia android/key.properties nem as quatro variaveis ANDROID_KEY* configuradas.
+A tentativa real de assembleRelease terminou com a guarda de assinatura no
+build.gradle.kts; nenhum APK/AAB release foi produzido ou instalado nesta etapa.
+Nao usar assinatura debug como substituta. Criacao/backup da chave e build:
+`docs/android-release.md` e `scripts/Build-AndroidRelease.ps1`.
+
+Ativacao Play exige app novo com o package aprovado, produtos/base plans ativos,
+ADC com permissoes Play, AES com backup, RTDN OIDC e license testers. Produtos e
+credenciais reais nao foram informados; nao habilitado remotamente e nao testado
+em sandbox. Usar pagamentos de teste: teste interno sozinho nao evita cobranca.
+Publicar AAB no teste interno so apos configurar assinatura propria.
+
+Deploy segue docs/render.md apos revisao/autorizacao de commit/push no repositorio
+independente rasweb12/EquilibraFitPlusPlus. Nao houve commit/push ou redeploy.
+Health 200 comprova servicos ja publicados, nao a publicacao destas alteracoes,
+Billing funcionando, OpenAI real ou fluxo completo de cadastro/confirmacao.
+Email/URL Configuration no Supabase e E2E real/offline, dois testes remotos e
+Docker build/up continuam gates. UI de troca de plano/prorata permanece futura.
+
+APK debug atualizado nesta etapa: build PASS, package
+br.com.equilibrafit.app.plusplus.dev, versao 1.0.0+1, target SDK 36,
+branding EquilibraFit++ e permissao com.android.vending.BILLING conferidos.
+apksigner verify PASS (v2); isso e assinatura DEBUG, nao chave de publicacao.
+Kernel contem a API HTTPS publicada e a guarda billing.invalid_response;
+nao contem http://10.0.2.2:5158 nem http://localhost:5158.
+SHA256: FBA0EFDCAD3379B7331B076F38313AD766F7A795E813CA952A79AE5000D78CB4.
+Arquivo: src/mobile/equilibrafit_plusplus_app/build/app/outputs/flutter-apk/app-debug.apk.
+Nao instalado nesta etapa, sem limpar/reiniciar emulador ou dados do app.
+Aviso preexistente de migracao futura Built-in Kotlin permanece. Este APK
+nao comprova compra Play do package de release, nem substitui APK/AAB assinado.

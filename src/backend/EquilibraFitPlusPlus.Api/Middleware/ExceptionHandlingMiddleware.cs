@@ -40,7 +40,13 @@ public sealed class ExceptionHandlingMiddleware
         {
             if (exception is BillingValidationException billing)
             {
-                context.Response.StatusCode = billing.Code == "billing.not_configured" ? 503 : 400;
+                context.Response.StatusCode = billing.Code switch
+                {
+                    "billing.not_configured" or "billing.provider_unavailable" or "billing.acknowledgement_failed" => StatusCodes.Status503ServiceUnavailable,
+                    "billing.provider_timeout" => StatusCodes.Status504GatewayTimeout,
+                    "billing.provider_invalid_response" => StatusCodes.Status502BadGateway,
+                    _ => StatusCodes.Status400BadRequest
+                };
                 await context.Response.WriteAsJsonAsync(new ApiErrorResponse(context.TraceIdentifier, billing.Code, billing.Message, []));
                 return;
             }

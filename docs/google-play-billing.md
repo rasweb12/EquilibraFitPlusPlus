@@ -27,10 +27,12 @@ Nao registra dados de cartao.
 Novo aplicativo Play com applicationId proprio, assinatura independente,
 produtos/subscriptions/base plans e contas license testers.
 O ID de debug nao e o ID de publicacao e o original nao deve ser substituido.
+ID autorizado: `br.com.equilibrafit.app.plusplus`; debug usa sufixo `.dev`.
+Veja `android-release.md` para keystore, APK assinado e AAB de teste interno.
 
 ```dotenv
 GooglePlay__Enabled=true
-GOOGLE_PLAY_PACKAGE_NAME=SEU_APPLICATION_ID
+GOOGLE_PLAY_PACKAGE_NAME=br.com.equilibrafit.app.plusplus
 GOOGLE_PLAY_PRODUCT_IDS=SEU_PRODUCT_ID,OUTRO_PRODUCT_ID
 GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/google-play.json
 BILLING_TOKEN_ENCRYPTION_KEY=BASE64_DE_32_BYTES_ALEATORIOS
@@ -39,10 +41,23 @@ GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL=CONTA_PUSH_AUTORIZADA
 ```
 
 Endpoint RTDN: POST /api/v1/billing/google-play/notifications.
+Audience da API publicada:
+`https://equilibrafit-plusplus-api-4lkw.onrender.com/api/v1/billing/google-play/notifications`.
+Product IDs devem ser os REAIS e ativos do Play Console; exemplos/fixtures de
+testes nao criam produtos. Configuracao habilitada sem package, produtos,
+chave AES de 32 bytes ou RTDN HTTPS/conta push interrompe startup, sem expor
+valores privados. Erros Google transitorios retornam 503/504; resposta invalida
+502; compra/usuario invalidos 400. Cliente nao confirma recibo nao validado.
 Conta ADC precisa de Android Publisher API e permissoes Play apropriadas.
 Credencial JSON somente em secret file/backend, nunca Flutter/Git/container image.
 Guarde chave AES separada com backup: perder/trocar chave sem recriptografar
 os tokens impede reconciliacao. SUPABASE_SECRET_KEY nao substitui ADC.
+No Render, criar Secret File `google-play.json`, montado em
+`/etc/secrets/google-play.json`. Preencher env vars no servico API e habilitar
+GooglePlay__Enabled SOMENTE depois de configurar e revisar todos os requisitos.
+`sync: false` no Blueprint preserva a escolha manual; em ambiente novo definir
+`false` enquanto o Play nao estiver pronto. Este arquivo nao cria a conta de
+servico, produtos, topic/subscription Pub/Sub ou configuracoes no painel.
 
 RTDN usa push Pub/Sub autenticado com token Google OIDC: issuer, audience,
 email verificado e conta especifica. Mensagem indica mudanca; estado e sempre

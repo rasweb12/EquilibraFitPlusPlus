@@ -29,6 +29,21 @@ class BillingState {
   final bool premium;
   final List<ProductDetails> products;
   final String? message;
+
+  BillingState copyWith({
+    bool? loading,
+    bool? available,
+    bool? premium,
+    List<ProductDetails>? products,
+    String? message,
+  }) =>
+      BillingState(
+        loading: loading ?? this.loading,
+        available: available ?? this.available,
+        premium: premium ?? this.premium,
+        products: products ?? this.products,
+        message: message,
+      );
 }
 
 class GooglePlayPurchaseVerifier {
@@ -40,6 +55,12 @@ class GooglePlayPurchaseVerifier {
     PurchaseDetails purchase,
     Future<void> Function(PurchaseDetails) complete,
   ) async {
+    if (purchase.verificationData.serverVerificationData.isEmpty) {
+      throw const AppFailure(
+        'Comprovante de compra indisponivel.',
+        code: 'billing.invalid_purchase',
+      );
+    }
     final result = await client.postJson(
       '/api/v1/billing/google-play/verify',
       body: <String, Object?>{
@@ -49,21 +70,33 @@ class GooglePlayPurchaseVerifier {
         'X-Local-Expected-User': userId,
       },
     );
+    if (result['premium'] is! bool ||
+        result['productId'] != purchase.productID) {
+      throw const AppFailure(
+        'Nao foi possivel confirmar esta assinatura.',
+        code: 'billing.invalid_response',
+      );
+    }
     if (purchase.pendingCompletePurchase) await complete(purchase);
-    return result['premium'] == true;
+    return result['premium'] as bool;
   }
 }
 
 class GooglePlayBilling extends StateNotifier<BillingState> {
-  GooglePlayBilling(this._client, this._userId) : super(const BillingState()) {
+  GooglePlayBilling(this._client, this._userId, {InAppPurchase? store})
+      : _store = store,
+        super(const BillingState()) {
     if (!kIsWeb &&
         defaultTargetPlatform == TargetPlatform.android &&
         _userId != null) {
-      _subscription = InAppPurchase.instance.purchaseStream.listen(
+      _store ??= InAppPurchase.instance;
+      _subscription = _store!.purchaseStream.listen(
         (purchases) => unawaited(_process(purchases)),
         onError: (_) {
           if (mounted) {
-            state = const BillingState(
+            state = state.copyWith(
+              loading: false,
+              available: false,
               message: 'Nao foi possivel consultar as compras.',
             );
           }
@@ -74,57 +107,116 @@ class GooglePlayBilling extends StateNotifier<BillingState> {
   }
   final ApiClient _client;
   final String? _userId;
+  InAppPurchase? _store;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
   Future<void> _processing = Future<void>.value();
 
   Future<void> load() async {
-    if (_subscription == null) return;
-    state = const BillingState(loading: true);
+    if (_subscription == null || state.loading) return;
+    state = state.copyWith(loading: true, available: false, products: const []);
     try {
       final status = await _client.getJson('/api/v1/premium/status');
+      if (!mounted) return;
+      state = state.copyWith(premium: premiumFromStatus(status));
       final config =
           await _client.getJson('/api/v1/billing/google-play/products');
-      if (config['enabled'] != true ||
-          !await InAppPurchase.instance.isAvailable()) {
+      if (!mounted) return;
+      if (config['enabled'] != true || !await _store!.isAvailable()) {
         if (mounted) {
-          state = BillingState(
-            premium: premiumFromStatus(status),
+          state = state.copyWith(
+            loading: false,
             message: 'Assinaturas indisponiveis.',
           );
         }
         return;
       }
       final ids = (config['productIds'] as List).cast<String>().toSet();
-      final response = await InAppPurchase.instance.queryProductDetails(ids);
+      if (ids.isEmpty) {
+        if (mounted) {
+          state = state.copyWith(
+            loading: false,
+            message: 'Nenhum plano disponivel no momento.',
+          );
+        }
+        return;
+      }
+      final response = await _store!.queryProductDetails(ids);
       if (mounted) {
-        state = BillingState(
+        state = state.copyWith(
+          loading: false,
           available: response.error == null,
-          premium: premiumFromStatus(status),
           products: response.productDetails,
-          message: response.notFoundIDs.isEmpty
-              ? null
-              : 'Alguns planos estao indisponiveis.',
+          message: response.error != null
+              ? 'Nao foi possivel consultar os planos.'
+              : response.productDetails.isEmpty
+                  ? 'Nenhum plano disponivel no momento.'
+                  : response.notFoundIDs.isEmpty
+                      ? null
+                      : 'Alguns planos estao indisponiveis.',
         );
       }
     } on AppFailure catch (failure) {
-      if (mounted) state = BillingState(message: failure.message);
+      if (mounted) {
+        state = state.copyWith(loading: false, message: failure.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        state = state.copyWith(
+          loading: false,
+          available: false,
+          message: 'Nao foi possivel consultar a Google Play. Tente novamente.',
+        );
+      }
     }
   }
 
   Future<void> buy(ProductDetails product) async {
-    if (_userId == null || !state.available) return;
-    await InAppPurchase.instance.buyNonConsumable(
-      purchaseParam: PurchaseParam(
-        productDetails: product,
-        applicationUserName: billingAccountId(_userId),
-      ),
-    );
+    if (_userId == null ||
+        !state.available ||
+        state.loading ||
+        !state.products.any((available) => available.id == product.id)) {
+      return;
+    }
+    state = state.copyWith(loading: true);
+    try {
+      final started = await _store!.buyNonConsumable(
+        purchaseParam: PurchaseParam(
+          productDetails: product,
+          applicationUserName: billingAccountId(_userId),
+        ),
+      );
+      if (mounted && !started) {
+        state = state.copyWith(message: 'Nao foi possivel iniciar a compra.');
+      }
+    } catch (_) {
+      if (mounted) {
+        state = state.copyWith(message: 'Nao foi possivel iniciar a compra.');
+      }
+    } finally {
+      if (mounted) {
+        state = state.copyWith(loading: false, message: state.message);
+      }
+    }
   }
 
   Future<void> restore() async {
-    if (_subscription == null) return;
-    await InAppPurchase.instance
-        .restorePurchases(applicationUserName: billingAccountId(_userId!));
+    if (_subscription == null || !state.available || state.loading) return;
+    state = state.copyWith(loading: true);
+    try {
+      await _store!.restorePurchases(
+        applicationUserName: billingAccountId(_userId!),
+      );
+    } catch (_) {
+      if (mounted) {
+        state = state.copyWith(
+          message: 'Nao foi possivel restaurar as compras. Tente novamente.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        state = state.copyWith(loading: false, message: state.message);
+      }
+    }
   }
 
   Future<void> _process(List<PurchaseDetails> purchases) {
@@ -133,21 +225,16 @@ class GooglePlayBilling extends StateNotifier<BillingState> {
       for (final purchase in purchases) {
         if (!mounted) return;
         if (purchase.status == PurchaseStatus.pending) {
-          state = BillingState(
-            available: state.available,
-            products: state.products,
-            premium: state.premium,
+          state = state.copyWith(
             message: 'Compra pendente.',
           );
         } else if (purchase.status == PurchaseStatus.purchased ||
             purchase.status == PurchaseStatus.restored) {
           try {
             final premium = await GooglePlayPurchaseVerifier(_client, _userId!)
-                .verify(purchase, InAppPurchase.instance.completePurchase);
+                .verify(purchase, _store!.completePurchase);
             if (mounted) {
-              state = BillingState(
-                available: state.available,
-                products: state.products,
+              state = state.copyWith(
                 premium: premium,
                 message: premium
                     ? 'Premium ativo.'
@@ -156,17 +243,13 @@ class GooglePlayBilling extends StateNotifier<BillingState> {
             }
           } on AppFailure catch (failure) {
             if (mounted) {
-              state = BillingState(
-                available: state.available,
-                products: state.products,
-                premium: state.premium,
+              state = state.copyWith(
                 message: failure.message,
               );
             }
           } catch (_) {
             if (mounted) {
-              state = BillingState(
-                products: state.products,
+              state = state.copyWith(
                 message:
                     'Confirmacao pendente. Restaure suas compras para tentar novamente.',
               );
@@ -174,10 +257,7 @@ class GooglePlayBilling extends StateNotifier<BillingState> {
           }
         } else if (purchase.status == PurchaseStatus.error ||
             purchase.status == PurchaseStatus.canceled) {
-          state = BillingState(
-            available: state.available,
-            products: state.products,
-            premium: state.premium,
+          state = state.copyWith(
             message: purchase.status == PurchaseStatus.canceled
                 ? 'Compra cancelada.'
                 : 'Nao foi possivel concluir a compra.',

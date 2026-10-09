@@ -1,6 +1,14 @@
+# API e servidor
 fastapi>=0.116.0
 uvicorn[standard]>=0.35.0
+
+# Configuração
 pydantic-settings>=2.10.0
+
+# Provedores de Inteligência Artificial
 openai>=1.97.0
+google-genai>=1.0.0
+
+# Processamento de dados
 numpy>=2.2.0
 pandas>=2.3.0

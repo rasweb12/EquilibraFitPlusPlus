@@ -2,7 +2,7 @@ import json
 
 from app.core.config import Settings
 from app.prompts.safety import COACH_SYSTEM_PROMPT
-from app.providers.openai_provider import OpenAiTextProvider
+from app.providers.ai_provider_router import AiProviderRouter
 from app.rag.knowledge_base import retrieve_guidance
 from app.schemas.coach import CoachMessageRequest, CoachMessageResponse
 from app.services.safety_service import SafetyService, _normalize
@@ -13,7 +13,7 @@ class CoachService:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._provider = OpenAiTextProvider(settings)
+        self._provider = AiProviderRouter(settings)
         self._safety = SafetyService()
 
     async def reply(self, request: CoachMessageRequest) -> CoachMessageResponse:
@@ -26,9 +26,10 @@ class CoachService:
         )
 
         content = await self._provider.complete(
-            system_prompt=COACH_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            model=request.model,
+        feature="coach",
+        system_prompt=COACH_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        #model=request.model,
         )
         fallback_used = content is None
         if content is None:

@@ -1,4 +1,4 @@
-storeFile=app/upload-keystore.jks
-storePassword=change-me
+storeFile=C:/Users/SEU_USUARIO/keys/equilibrafit-plusplus-upload.jks
+storePassword=SUA_SENHA_LOCAL
 keyAlias=upload
-keyPassword=change-me
+keyPassword=SUA_SENHA_LOCAL

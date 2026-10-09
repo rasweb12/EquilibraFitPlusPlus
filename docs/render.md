@@ -101,6 +101,13 @@ certifica acesso OpenAI. Swagger API e docs AI sao desligados em producao.
 
 Billing fica desabilitado ate configurar Play Console, credenciais ADC em secret
 file no Render, chave AES, produtos e RTDN. Veja google-play-billing.md.
+O Blueprint deixa GooglePlay__Enabled e secrets de Billing como `sync: false`:
+configure `false` em projeto novo; use `true` apenas depois da preparacao Play.
+Nao aplicar o Blueprint esperando que produtos/credenciais sejam criados.
+GOOGLE_APPLICATION_CREDENTIALS aponta para `/etc/secrets/google-play.json`,
+que precisa ser adicionado manualmente como Secret File na API, nunca na imagem.
+Package autorizado: br.com.equilibrafit.app.plusplus. Configuracao incompleta
+quando habilitada impede startup; testar /health/ready apos cada mudanca.
 Bootstrap administrativo fica desligado; habilite temporariamente com UUID
 confirmado, confira auditoria e desabilite novamente.
 
