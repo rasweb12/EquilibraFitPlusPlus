@@ -236,3 +236,4 @@ class AiProviderRouter:
             image_base64=image_base64,
             mime_type=mime_type,
         )
+    #1
