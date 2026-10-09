@@ -1,7 +1,6 @@
 import json
 import logging
 from time import perf_counter
-
 from app.core.config import Settings
 from app.prompts.loader import load_prompt
 from app.providers.ai_provider_router import AiProviderRouter
@@ -14,31 +13,19 @@ from app.schemas.workouts import (
     WorkoutGenerateRequest,
     WorkoutGenerateResponse,
 )
-
 logger = logging.getLogger(__name__)
-
-
 class WorkoutService:
     """Generates safe workout suggestions."""
-
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._openai = AiProviderRouter(settings)
-
+        self._provider = AiProviderRouter(settings)
     async def generate(self, request: WorkoutGenerateRequest) -> WorkoutGenerateResponse:
         """Generate a workout plan proposal with AI and hybrid fallback."""
         started_at = perf_counter()
-        fallback_used = True
-        response: WorkoutGenerateResponse | None = None
         retrieval = self._retrieve_knowledge(request)
-
-        if self._openai.is_configured:
-            response = await self._generate_with_openai(request, retrieval)
-            fallback_used = response is None
-
+        response = await self._generate_with_ai(request, retrieval)
         if response is None:
             response = self._generate_hybrid(request, retrieval)
-
         logger.info(
             "workout_generation_completed prompt_version=%s model=%s fallback=%s duration_ms=%s tokens=%s retrieval=%s docs=%s context=%s",
             request.prompt_version,
@@ -50,11 +37,8 @@ class WorkoutService:
             response.retrieved_document_ids,
             self._context_telemetry(request.workout_ai_context),
         )
-        if fallback_used and not response.fallback_used:
-            response.fallback_used = True
         return response
-
-    async def _generate_with_openai(
+    async def _generate_with_ai(
         self,
         request: WorkoutGenerateRequest,
         retrieval: RetrievalResult,
@@ -82,16 +66,14 @@ class WorkoutService:
         )
         if payload is None:
             return None
-
         try:
             response = WorkoutGenerateResponse.model_validate(payload)
         except Exception:  # noqa: BLE001 - invalid model output must fallback safely
             return None
-
         response.frequency = min(max(response.frequency, 1), request.days_per_week)
         response.days = self._limit_days_and_exercises(response.days, response.frequency, request)
-        response.model = self._settings.openai_model
-        response.fallback_used = False
+        response.model = self._provider.last_model or self._settings.openai_model
+        response.fallback_used = self._provider.fallback_used
         response.retrieval_used = bool(retrieval.chunks)
         response.retrieved_document_ids = retrieval.document_ids
         response.safety_notices.append(
@@ -99,7 +81,6 @@ class WorkoutService:
         )
         response.rationale.confidence = min(max(response.rationale.confidence, 0), 1)
         return response
-
     def _generate_hybrid(self, request: WorkoutGenerateRequest, retrieval: RetrievalResult) -> WorkoutGenerateResponse:
         """Generate a hybrid deterministic workout plan proposal."""
         context = request.workout_ai_context
@@ -108,7 +89,6 @@ class WorkoutService:
         if not days:
             priority = self._resolve_priority(request)
             days = self._templates_for_equipment(priority, self._effective_equipment(request))
-
         days = self._limit_days_and_exercises(days, frequency, request)
         return WorkoutGenerateResponse(
             frequency=frequency,
@@ -124,11 +104,9 @@ class WorkoutService:
             retrieval_used=bool(retrieval.chunks),
             retrieved_document_ids=retrieval.document_ids,
         )
-
     def _resolve_frequency(self, request: WorkoutGenerateRequest) -> int:
         context_days = request.workout_ai_context.rotina.dias_por_semana if request.workout_ai_context and request.workout_ai_context.rotina else None
         return min(max(request.days_per_week or context_days or 3, 1), 7)
-
     def _resolve_priority(self, request: WorkoutGenerateRequest) -> str:
         context_groups = (
             request.workout_ai_context.objetivos.grupos_musculares_prioritarios
@@ -137,21 +115,18 @@ class WorkoutService:
         )
         groups = request.priority_muscle_groups or context_groups
         return ", ".join(groups[:2]) if groups else "Corpo inteiro"
-
     def _effective_duration(self, request: WorkoutGenerateRequest) -> int | None:
         if request.duration_minutes:
             return request.duration_minutes
         if request.workout_ai_context and request.workout_ai_context.rotina:
             return request.workout_ai_context.rotina.minutos_disponiveis
         return None
-
     def _effective_equipment(self, request: WorkoutGenerateRequest) -> list[str]:
         if request.equipment:
             return request.equipment
         if request.workout_ai_context and request.workout_ai_context.rotina:
             return request.workout_ai_context.rotina.equipamentos
         return []
-
     def _exercise_limit(self, request: WorkoutGenerateRequest) -> int:
         duration = self._effective_duration(request)
         duration_limit = 10
@@ -162,7 +137,6 @@ class WorkoutService:
                 duration_limit = 4
             elif duration <= 60:
                 duration_limit = 6
-
         day_counts = (
             [day.quantidade_exercicios for day in request.workout_ai_context.plano_atual.exercicios_por_dia]
             if request.workout_ai_context and request.workout_ai_context.plano_atual
@@ -170,7 +144,6 @@ class WorkoutService:
         )
         plan_limit = max(day_counts) if day_counts else duration_limit
         return min(max(min(plan_limit, duration_limit), 1), 10)
-
     def _limit_days_and_exercises(
         self, days: list[WorkoutDay], frequency: int, request: WorkoutGenerateRequest
     ) -> list[WorkoutDay]:
@@ -179,14 +152,12 @@ class WorkoutService:
             WorkoutDay(name=day.name, focus=day.focus, exercises=day.exercises[:exercise_limit])
             for day in days[:frequency]
         ]
-
     def _should_preserve_current_plan(self, context: WorkoutAiContext | None, request: WorkoutGenerateRequest) -> bool:
         if request.equipment:
             return False
         if not context or not context.plano_atual or not context.plano_atual.exercicios_prescritos:
             return False
         return not self._has_recent_pain(context) and not self._has_high_rpe(context)
-
     def _current_plan_days(self, context: WorkoutAiContext | None, request: WorkoutGenerateRequest) -> list[WorkoutDay]:
         if not context or not context.plano_atual:
             return []
@@ -199,7 +170,6 @@ class WorkoutService:
             WorkoutDay(name=f"Treino {chr(64 + index)}", focus=focuses[day], exercises=grouped[day])
             for index, day in enumerate(sorted(grouped)[: request.days_per_week], start=1)
         ]
-
     def _templates_for_equipment(self, priority: str, equipment: list[str]) -> list[WorkoutDay]:
         normalized = " ".join(item.lower() for item in equipment)
         if "halter" in normalized:
@@ -231,7 +201,6 @@ class WorkoutService:
             WorkoutDay(name="Treino F", focus="Zona leve", exercises=["Caminhada", "Mobilidade torácica", "Alongamento leve", "Pausa consciente"]),
             WorkoutDay(name="Treino G", focus="Recuperação ativa", exercises=["Caminhada curta", "Mobilidade geral", "Alongamento leve", "Respiração"]),
         ]
-
     def _progression_message(self, request: WorkoutGenerateRequest) -> str:
         context = request.workout_ai_context
         duration = self._effective_duration(request)
@@ -243,7 +212,6 @@ class WorkoutService:
         if self._has_safe_progression_evidence(context):
             return f"Pode propor progressão leve{duration_text}, usando histórico de séries, repetições e RPE."
         return f"Aumente volume ou carga aos poucos{duration_text}, mantendo técnica e recuperação."
-
     def _rationale(self, request: WorkoutGenerateRequest) -> RecommendationRationale:
         context = request.workout_ai_context
         if self._has_recent_pain(context):
@@ -269,7 +237,6 @@ class WorkoutService:
             reason="Fallback híbrido usou os dados disponíveis sem inventar informações ausentes.",
             confidence=0.62,
         )
-
     @staticmethod
     def _has_recent_pain(context: WorkoutAiContext | None) -> bool:
         if not context:
@@ -277,7 +244,6 @@ class WorkoutService:
         if context.seguranca and context.seguranca.dor_desconforto_recente:
             return True
         return bool(context.historico_recente and any(item.dor_desconforto for item in context.historico_recente.exercicios_realizados))
-
     @staticmethod
     def _has_high_rpe(context: WorkoutAiContext | None) -> bool:
         if not context or not context.historico_recente:
@@ -285,7 +251,6 @@ class WorkoutService:
         return (context.historico_recente.rpe_maximo or 0) >= 9 or any(
             item.rpe >= 9 for item in context.historico_recente.exercicios_realizados
         )
-
     def _has_safe_progression_evidence(self, context: WorkoutAiContext | None) -> bool:
         if not context or not context.historico_recente or self._has_recent_pain(context) or self._has_high_rpe(context):
             return False
@@ -293,12 +258,10 @@ class WorkoutService:
             item.tendencia.startswith("subindo") and (item.rpe_recente is None or item.rpe_recente <= 8)
             for item in context.historico_recente.progressao
         )
-
     def _retrieve_knowledge(self, request: WorkoutGenerateRequest) -> RetrievalResult:
         policy = self._settings.ai_cost_policy
         if not policy.enable_rag or policy.max_retrieved_chunks == 0:
             return RetrievalResult()
-
         context = request.workout_ai_context
         query_parts = [
             request.objective,
@@ -317,24 +280,20 @@ class WorkoutService:
             level=request.level,
             limit=policy.max_retrieved_chunks,
         )
-
     def _context_json(self, context: WorkoutAiContext | None) -> str:
         if not context:
             return "{}"
-
         payload = context.model_dump(by_alias=True, exclude_none=True, mode="json")
         raw = json.dumps(payload, ensure_ascii=False)
         max_chars = self._settings.ai_cost_policy.max_context_tokens * 4
         if len(raw) <= max_chars:
             return raw
-
         history = payload.get("historicoRecente")
         if isinstance(history, dict):
             history["exerciciosRealizados"] = history.get("exerciciosRealizados", [])[:40]
             history["sessoesRecentes"] = history.get("sessoesRecentes", [])[:15]
             history["progressao"] = history.get("progressao", [])[:20]
         return json.dumps(payload, ensure_ascii=False)
-
     @staticmethod
     def _retrieved_knowledge_json(retrieval: RetrievalResult) -> str:
         chunks = [
@@ -349,7 +308,6 @@ class WorkoutService:
             for chunk in retrieval.chunks
         ]
         return json.dumps(chunks, ensure_ascii=False)
-
     @staticmethod
     def _resolve_context_priorities(context: WorkoutAiContext | None, request: WorkoutGenerateRequest) -> list[str]:
         if request.priority_muscle_groups:
@@ -357,7 +315,6 @@ class WorkoutService:
         if context and context.objetivos:
             return context.objetivos.grupos_musculares_prioritarios
         return []
-
     @staticmethod
     def _context_telemetry(context: WorkoutAiContext | None) -> dict[str, int | bool | None]:
         if not context:

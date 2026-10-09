@@ -19,7 +19,7 @@ class PlanService:
 
         return self._generate_hybrid(request)
 
-    async def _generate_with_openai(self, request: PlanGenerateRequest) -> PlanGenerateResponse | None:
+    async def _generate_with_ai(self, request: PlanGenerateRequest) -> PlanGenerateResponse | None:
         system_prompt = (
             "Você é o motor interno do EquilibraFit++. Gere orientação alimentar educacional, flexível e sem extremismos. "
             "Nunca use culpa, punição ou linguagem negativa. Não substitua nutricionistas ou médicos. "

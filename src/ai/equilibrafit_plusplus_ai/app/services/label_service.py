@@ -1,102 +1,133 @@
+import base64
+import binascii
+import logging
 import re
 import unicodedata
+
+from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.providers.ai_provider_router import AiProviderRouter
 from app.schemas.labels import LabelRecognizeRequest, LabelRecognizeResponse
 
+logger = logging.getLogger(__name__)
+
 
 class LabelRecognitionService:
-    """Extracts nutrition facts from label text or sends image to review path."""
+    """Extract nutrition facts from text or image, always requiring user review."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._openai = AiProviderRouter(settings)
+        self._provider = AiProviderRouter(settings)
 
     async def recognize(self, request: LabelRecognizeRequest) -> LabelRecognizeResponse:
-        """Recognize a nutrition label."""
-        if request.extracted_text:
+        """Recognize a nutrition label without inventing unreadable values."""
+        if request.extracted_text and request.extracted_text.strip():
             return self._from_text(request.extracted_text)
 
-        if request.image_base64 and self._openai.is_configured:
-            openai_response = await self._recognize_with_openai(request.image_base64)
-            if openai_response is not None:
-                return openai_response
+        if request.image_base64:
+            result = await self._recognize_with_ai(request.image_base64)
+            if result is not None:
+                return result
 
         return LabelRecognizeResponse(
-            confidence=25.0,
+            confidence=0.0,
             requires_user_review=True,
             model="equilibrafit-labels-rules-v1",
             fallback_used=True,
-            message="Rótulo recebido. Ainda precisamos confirmar os dados manualmente antes de salvar.",
+            message="Não foi possível extrair o rótulo com segurança. Confira e informe os valores manualmente.",
         )
 
     @staticmethod
     def _from_text(text: str) -> LabelRecognizeResponse:
         normalized = _normalize_text(text)
-
+        serving_size = _match_text(normalized, r"(?:porcao|serving)\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?\s*[a-z]+)")
+        calories = _match_number(normalized, r"(?:calorias|kcal|valor energetico)\D*([0-9]+(?:\.[0-9]+)?)")
+        protein_g = _match_number(normalized, r"(?:proteinas?|protein)\D*([0-9]+(?:\.[0-9]+)?)")
+        carbs_g = _match_number(normalized, r"(?:carboidratos?|carbs?)\D*([0-9]+(?:\.[0-9]+)?)")
+        fat_g = _match_number(normalized, r"(?:gorduras totais|fat)\D*([0-9]+(?:\.[0-9]+)?)")
+        extracted = [calories, protein_g, carbs_g, fat_g]
+        count = sum(value is not None for value in extracted)
         return LabelRecognizeResponse(
-            serving_size=_match_text(normalized, r"(porcao|serving)\s*[:\-]?\s*([0-9]+ ?[a-z]+)", group=2),
-            calories=_match_number(normalized, r"(calorias|kcal|valor energetico)\D*([0-9]+(?:\.[0-9]+)?)"),
-            protein_g=_match_number(normalized, r"(proteinas?|protein)\D*([0-9]+(?:\.[0-9]+)?)"),
-            carbs_g=_match_number(normalized, r"(carboidratos?|carbs?)\D*([0-9]+(?:\.[0-9]+)?)"),
-            fat_g=_match_number(normalized, r"(gorduras totais|fat)\D*([0-9]+(?:\.[0-9]+)?)"),
-            confidence=70.0,
+            serving_size=serving_size,
+            calories=calories,
+            protein_g=protein_g,
+            carbs_g=carbs_g,
+            fat_g=fat_g,
+            confidence=round(70.0 * count / 4, 1),
             requires_user_review=True,
             model="equilibrafit-labels-text-v1",
             fallback_used=False,
-            message="Dados extraídos do texto. Confirme as informações antes de salvar.",
+            message="Dados extraídos do texto. Confirme a porção e os valores antes de salvar." if count else "Nenhum valor nutricional reconhecido; preencha manualmente.",
         )
 
-    async def _recognize_with_openai(self, image_base64: str) -> LabelRecognizeResponse | None:
+    async def _recognize_with_ai(self, image_base64: str) -> LabelRecognizeResponse | None:
+        # The providers accept raw base64 bytes; data URLs are intentionally rejected.
+        try:
+            image_bytes = base64.b64decode(image_base64, validate=True)
+        except (ValueError, binascii.Error):
+            return None
+        if not image_bytes or len(image_bytes) > 10 * 1024 * 1024:
+            return None
+        if image_bytes.startswith(b"\xff\xd8\xff"):
+            mime_type = "image/jpeg"
+        elif image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            mime_type = "image/png"
+        elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+            mime_type = "image/webp"
+        else:
+            return None
+
         system_prompt = (
-            "Você é o motor de OCR nutricional do EquilibraFit++. Extraia apenas dados visíveis do rótulo. "
-            "Quando algo não estiver claro, use null e exija revisão do usuário. Responda somente JSON válido."
+            "Você extrai dados nutricionais de rótulos para o EquilibraFit++. "
+            "Extraia exclusivamente informações legíveis da imagem e relativas à mesma porção. "
+            "Não invente valores. Para campos ilegíveis, retorne null. "
+            "Responda somente com um objeto JSON válido."
         )
         user_prompt = (
-            "Extraia dados nutricionais por porção da imagem.\n"
-            "JSON: {"
-            "\"serving_size\":string|null,"
-            "\"calories\":float|null,"
-            "\"protein_g\":float|null,"
-            "\"carbs_g\":float|null,"
-            "\"fat_g\":float|null,"
-            "\"confidence\":float,"
-            "\"requires_user_review\":bool,"
-            "\"model\":string,"
-            "\"fallback_used\":false,"
-            "\"message\":string"
-            "}"
+            "Leia a tabela nutricional e devolva JSON com: "
+            "serving_size (string ou null), calories (number ou null), "
+            "protein_g (number ou null), carbs_g (number ou null), "
+            "fat_g (number ou null), confidence (number de 0 a 100), "
+            "requires_user_review (true), model (string), "
+            "fallback_used (false) e message (string). "
+            "Use a mesma porção para todos os valores. "
+            "Não deduza dados ausentes e não use valores por 100 g como se fossem por porção."
         )
         payload = await self._provider.analyze_image_json(
             feature="labels",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             image_base64=image_base64,
+            mime_type=mime_type,
         )
         if payload is None:
             return None
-
         try:
             response = LabelRecognizeResponse.model_validate(payload)
-        except Exception:  # noqa: BLE001 - invalid model output must fallback safely
+        except (ValidationError, ValueError, TypeError):
+            logger.warning("Invalid nutrition label AI response; requesting manual review")
             return None
 
-        response.model = self._settings.openai_model
-        response.fallback_used = False
+        # Never trust the model to supply provider metadata or review requirements.
+        response.model = self._provider.last_model or self._settings.model_for_provider(
+            self._settings.labels_provider
+        )
+        response.fallback_used = self._provider.fallback_used
         response.requires_user_review = True
-        response.message = response.message or "Dados extraídos do rótulo. Confirme antes de salvar."
+        response.confidence = min(max(response.confidence, 0.0), 100.0)
+        response.message = "Dados extraídos do rótulo. Confira porção e valores antes de salvar."
         return response
 
 
 def _match_number(text: str, pattern: str) -> float | None:
     match = re.search(pattern, text)
-    return float(match.group(2)) if match else None
+    return float(match.group(1)) if match else None
 
 
-def _match_text(text: str, pattern: str, group: int) -> str | None:
+def _match_text(text: str, pattern: str) -> str | None:
     match = re.search(pattern, text)
-    return match.group(group) if match else None
+    return match.group(1).strip() if match else None
 
 
 def _normalize_text(value: str) -> str:
