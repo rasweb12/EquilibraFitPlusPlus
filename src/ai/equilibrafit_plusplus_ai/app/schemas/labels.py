@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LabelRecognizeRequest(BaseModel):
@@ -6,10 +6,12 @@ class LabelRecognizeRequest(BaseModel):
 
     image_base64: str | None = None
     extracted_text: str | None = None
+    label_context: str | None = Field(default=None, max_length=500)
 
 
 class LabelRecognizeResponse(BaseModel):
     """Nutrition label recognition response."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     serving_size: str | None = None
     calories: float | None = Field(default=None, ge=0)

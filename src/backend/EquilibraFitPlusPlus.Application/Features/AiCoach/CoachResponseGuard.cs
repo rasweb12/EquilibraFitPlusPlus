@@ -10,6 +10,7 @@ namespace EquilibraFitPlusPlus.Application.Features.AiCoach;
 /// </summary>
 internal static class CoachResponseGuard
 {
+    internal const string HealthDisclaimer = "O Coach IA orienta e educa, mas não substitui médicos, nutricionistas ou profissionais habilitados.";
     private static readonly string[] ForbiddenTerms =
     [
         "você falhou",
@@ -48,7 +49,9 @@ internal static class CoachResponseGuard
             return Result.Failure(new Error("ia.coach_linguagem_insegura", "A resposta da IA foi bloqueada por linguagem fora da filosofia do produto."));
         }
 
-        if (MedicalRiskTerms.Select(Normalize).Any(normalized.Contains))
+        // Ignore only our approved disclaimer; keep checking every other clinical claim.
+        string clinicalContent = normalized.Replace(Normalize(HealthDisclaimer), string.Empty, StringComparison.Ordinal);
+        if (MedicalRiskTerms.Select(Normalize).Any(clinicalContent.Contains))
         {
             return Result.Failure(new Error("ia.coach_risco_clinico", "A resposta da IA foi bloqueada por risco de orientação clínica inadequada."));
         }

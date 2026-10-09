@@ -1,6 +1,7 @@
 import json
 import logging
 from time import perf_counter
+
 from app.core.config import Settings
 from app.prompts.loader import load_prompt
 from app.providers.ai_provider_router import AiProviderRouter
@@ -13,6 +14,7 @@ from app.schemas.workouts import (
     WorkoutGenerateRequest,
     WorkoutGenerateResponse,
 )
+
 logger = logging.getLogger(__name__)
 class WorkoutService:
     """Generates safe workout suggestions."""
@@ -59,21 +61,21 @@ class WorkoutService:
             f"RETRIEVED KNOWLEDGE JSON\n{retrieved_knowledge}\n\n"
             f"OPERATIONAL GUIDANCE\n{request.operational_guidance or 'usar padrão seguro do produto'}"
         )
-        payload = await self._provider.complete_json(
+        result = await self._provider.complete_json_result(
             feature="workouts",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
-        if payload is None:
+        if result.payload is None:
             return None
         try:
-            response = WorkoutGenerateResponse.model_validate(payload)
+            response = WorkoutGenerateResponse.model_validate(result.payload)
         except Exception:  # noqa: BLE001 - invalid model output must fallback safely
             return None
         response.frequency = min(max(response.frequency, 1), request.days_per_week)
         response.days = self._limit_days_and_exercises(response.days, response.frequency, request)
-        response.model = self._provider.last_model or self._settings.openai_model
-        response.fallback_used = self._provider.fallback_used
+        response.model = result.model
+        response.fallback_used = result.fallback_used
         response.retrieval_used = bool(retrieval.chunks)
         response.retrieved_document_ids = retrieval.document_ids
         response.safety_notices.append(

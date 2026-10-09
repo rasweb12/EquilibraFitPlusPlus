@@ -25,23 +25,28 @@ class CoachService:
             f"Fontes aprovadas:\n{guidance}"
         )
 
-        content = await self._provider.complete(
-        feature="coach",
-        system_prompt=COACH_SYSTEM_PROMPT,
-        user_prompt=user_prompt,
+        result = await self._provider.complete_result(
+            feature="coach",
+            system_prompt=COACH_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
         )
-        fallback_used = content is None
+        content = result.payload
+        fallback_used = result.fallback_used
+        model = result.model
         if content is None:
             content = self._fallback_reply(request.mensagem, request.contexto_json)
+            fallback_used = True
+            model = "equilibrafit-coach-rules-v1"
 
         safety = self._safety.validate_text(content)
         if not safety.is_safe:
             content = self._safety.safe_fallback("coach")
             fallback_used = True
+            model = "equilibrafit-coach-rules-v1"
 
         return CoachMessageResponse(
             conteudo=content,
-            modelo=request.model or self._settings.openai_model if not fallback_used else "equilibrafit-coach-rules-v1",
+            modelo=model,
             fallback_used=fallback_used,
         )
 

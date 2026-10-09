@@ -27,8 +27,10 @@ final dioProvider = Provider<Dio>((ref) {
   Future<void> refreshSession() async {
     final refreshToken = await tokenStore.readRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
-      throw const AppFailure('Entre novamente.',
-          code: 'auth.invalid_refresh_token',);
+      throw const AppFailure(
+        'Entre novamente.',
+        code: 'auth.invalid_refresh_token',
+      );
     }
     final refreshClient = Dio(
       BaseOptions(
@@ -49,8 +51,10 @@ final dioProvider = Provider<Dio>((ref) {
           rotated is! String ||
           access.isEmpty ||
           rotated.isEmpty) {
-        throw const AppFailure('Entre novamente.',
-            code: 'auth.invalid_refresh_token',);
+        throw const AppFailure(
+          'Entre novamente.',
+          code: 'auth.invalid_refresh_token',
+        );
       }
       if (await tokenStore.readRefreshToken() != refreshToken) {
         throw const AppFailure('A sessao mudou.', code: 'auth.session_changed');
@@ -76,10 +80,15 @@ final dioProvider = Provider<Dio>((ref) {
         if (expectedUser != null) {
           options.extra['expectedUser'] = expectedUser;
           if (token == null || _tokenSubject(token) != expectedUser) {
-            handler.reject(DioException(
+            handler.reject(
+              DioException(
                 requestOptions: options,
-                error: const AppFailure('A sessao mudou.',
-                    code: 'auth.session_changed',),),);
+                error: const AppFailure(
+                  'A sessao mudou.',
+                  code: 'auth.session_changed',
+                ),
+              ),
+            );
             return;
           }
         }
@@ -304,7 +313,9 @@ class ApiClient {
   ) {
     final statusCode = error.response?.statusCode;
     final data = error.response?.data;
-    final apiMessage = _extractMessage(data);
+    final apiMessage = statusCode != null && statusCode >= 500 && data is! Map
+        ? null
+        : _extractMessage(data);
 
     if (apiMessage != null && apiMessage.trim().isNotEmpty) {
       return AppFailure(
@@ -332,6 +343,16 @@ class ApiClient {
             : 'Não conseguimos conectar com a API agora. '
                 'Confira se ela está iniciada e tente novamente.',
         code: 'network_unavailable',
+      );
+    }
+
+    if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+      return AppFailure(
+        statusCode == 504
+            ? 'O servidor demorou para responder. Tente novamente em instantes.'
+            : 'O serviço está temporariamente indisponível. '
+                'Tente novamente em instantes.',
+        code: statusCode.toString(),
       );
     }
 
@@ -491,7 +512,8 @@ String? _tokenSubject(String token) {
     final parts = token.split('.');
     if (parts.length != 3) return null;
     final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),);
+      utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+    );
     return payload is Map ? payload['sub']?.toString() : null;
   } on FormatException {
     return null;

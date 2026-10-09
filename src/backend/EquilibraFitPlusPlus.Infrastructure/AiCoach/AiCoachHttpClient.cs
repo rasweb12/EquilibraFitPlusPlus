@@ -1,10 +1,10 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EquilibraFitPlusPlus.Application.Abstractions.AiContext;
 using EquilibraFitPlusPlus.Application.Abstractions.AiCoach;
-using EquilibraFitPlusPlus.Shared.Errors;
 using EquilibraFitPlusPlus.Shared.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -56,7 +56,7 @@ public sealed class AiCoachHttpClient : IAiCoachClient
                 string? content = response?.Conteudo ?? response?.Content;
                 if (string.IsNullOrWhiteSpace(content))
                 {
-                    return Result<AiCoachClientReply>.Failure(CreateUnavailableError("ia.coach_indisponivel"));
+                    return Result<AiCoachClientReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
                 }
 
                 string model = response?.Modelo ?? response?.Model ?? _options.Model;
@@ -76,9 +76,9 @@ public sealed class AiCoachHttpClient : IAiCoachClient
             payload,
             response =>
             {
-                if (response is null)
+                if (response?.Items is null || response.Items.Any(item => item is null))
                 {
-                    return Result<AiMealRecognitionClientReply>.Failure(CreateUnavailableError("ia.refeicao_indisponivel"));
+                    return Result<AiMealRecognitionClientReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
                 }
 
                 var items = response.Items
@@ -117,9 +117,9 @@ public sealed class AiCoachHttpClient : IAiCoachClient
             payload,
             response =>
             {
-                if (response is null)
+                if (response?.Items is null || response.Items.Any(item => item is null))
                 {
-                    return Result<AiMealTextEstimationClientReply>.Failure(CreateUnavailableError("ia.refeicao_texto_indisponivel"));
+                    return Result<AiMealTextEstimationClientReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
                 }
 
                 var items = response.Items
@@ -149,7 +149,7 @@ public sealed class AiCoachHttpClient : IAiCoachClient
     /// <inheritdoc />
     public Task<Result<AiLabelRecognitionClientReply>> ReconhecerRotuloAsync(AiLabelRecognitionClientRequest request, CancellationToken cancellationToken)
     {
-        var payload = new AiLabelRecognitionHttpRequest(request.ImageBase64, request.ExtractedText);
+        var payload = new AiLabelRecognitionHttpRequest(request.ImageBase64, request.ExtractedText, request.LabelContext);
 
         return PostAsync<AiLabelRecognitionHttpRequest, AiLabelRecognitionHttpResponse, AiLabelRecognitionClientReply>(
             _options.LabelRecognitionPath,
@@ -158,7 +158,7 @@ public sealed class AiCoachHttpClient : IAiCoachClient
             {
                 if (response is null)
                 {
-                    return Result<AiLabelRecognitionClientReply>.Failure(CreateUnavailableError("ia.rotulo_indisponivel"));
+                    return Result<AiLabelRecognitionClientReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
                 }
 
                 return Result<AiLabelRecognitionClientReply>.Success(new AiLabelRecognitionClientReply(
@@ -197,9 +197,11 @@ public sealed class AiCoachHttpClient : IAiCoachClient
             payload,
             response =>
             {
-                if (response?.Targets is null)
+                if (response?.Targets is null || response.Meals is null || response.SafetyNotices is null ||
+                    response.Alternatives is null || response.Meals.Any(item => item is null) ||
+                    response.SafetyNotices.Any(item => item is null))
                 {
-                    return Result<AiPlanGenerationClientReply>.Failure(CreateUnavailableError("ia.plano_indisponivel"));
+                    return Result<AiPlanGenerationClientReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
                 }
 
                 var targets = new AiMacroTargets(
@@ -249,9 +251,11 @@ public sealed class AiCoachHttpClient : IAiCoachClient
             payload,
             response =>
             {
-                if (response is null)
+                if (response?.Days is null || response.SafetyNotices is null ||
+                    response.Days.Any(day => day?.Exercises is null) ||
+                    response.SafetyNotices.Any(item => item is null))
                 {
-                    return Result<AiWorkoutGenerationClientReply>.Failure(CreateUnavailableError("ia.treino_indisponivel"));
+                    return Result<AiWorkoutGenerationClientReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
                 }
 
                 var days = response.Days
@@ -292,73 +296,110 @@ public sealed class AiCoachHttpClient : IAiCoachClient
     {
         if (_httpClient.BaseAddress is null)
         {
-            return Result<TReply>.Failure(new Error(
-                "ia.servico_indisponivel",
-                "O serviço de IA ainda não está configurado neste ambiente. Podemos seguir com ajustes manuais normalmente."));
+            return Result<TReply>.Failure(AiServiceErrors.Create(AiServiceErrors.NotConfigured));
         }
 
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        TimeSpan timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds <= 0 ? 30 : Math.Clamp(_options.TimeoutSeconds, 5, 120));
+        if (_httpClient.Timeout != System.Threading.Timeout.InfiniteTimeSpan && _httpClient.Timeout < timeout)
+        {
+            timeout = _httpClient.Timeout;
+        }
+        deadline.CancelAfter(timeout);
+        using var message = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(payload, options: JsonOptions)
+        };
         try
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(path, payload, JsonOptions, cancellationToken);
+            // Error bodies are never downloaded: Render can return a large HTML page.
+            using HttpResponseMessage response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            string? correlationId = GetCorrelationId(message.Headers);
+            string? upstreamCorrelationId = GetCorrelationId(response.Headers);
 
             if (!response.IsSuccessStatusCode)
             {
-                string responseBody = await ReadResponseBodySnippetAsync(response, cancellationToken);
                 _logger.LogWarning(
-                    "{OperationName} returned HTTP {StatusCode} for {Path}. DurationMs={DurationMs}. Body: {Body}",
+                    "{OperationName} upstream failure. StatusCode={StatusCode} Path={Path} DurationMs={DurationMs} ErrorCode={ErrorCode} ContentType={ContentType} CorrelationId={CorrelationId} UpstreamCorrelationId={UpstreamCorrelationId}",
                     operationName,
                     (int)response.StatusCode,
                     path,
                     stopwatch.ElapsedMilliseconds,
-                    responseBody);
-                return Result<TReply>.Failure(CreateUnavailableError("ia.servico_indisponivel"));
+                    ErrorCodeForStatus(response.StatusCode),
+                    IsJsonContent(response.Content) ? "json" : "non-json",
+                    correlationId,
+                    upstreamCorrelationId);
+                return Result<TReply>.Failure(AiServiceErrors.Create(ErrorCodeForStatus(response.StatusCode)));
             }
 
-            TResponse? body = await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions, cancellationToken);
+            if (!IsJsonContent(response.Content))
+            {
+                _logger.LogWarning("{OperationName} returned a non-JSON success response. Path={Path} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                    operationName, path, stopwatch.ElapsedMilliseconds, correlationId);
+                return Result<TReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
+            }
+
+            TResponse? body = await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions, deadline.Token);
             Result<TReply> result = map(body);
             _logger.LogInformation(
-                "{OperationName} completed. Path={Path} DurationMs={DurationMs} Success={Success}",
+                "{OperationName} completed. Path={Path} DurationMs={DurationMs} Success={Success} CorrelationId={CorrelationId} UpstreamCorrelationId={UpstreamCorrelationId}",
                 operationName,
                 path,
                 stopwatch.ElapsedMilliseconds,
-                result.IsSuccess);
+                result.IsSuccess,
+                correlationId,
+                upstreamCorrelationId);
             return result;
         }
-        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(exception, "{OperationName} timed out.", operationName);
-            return Result<TReply>.Failure(CreateUnavailableError("ia.servico_indisponivel"));
+            _logger.LogWarning("{OperationName} timed out. Path={Path} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                operationName, path, stopwatch.ElapsedMilliseconds, GetCorrelationId(message.Headers));
+            return Result<TReply>.Failure(AiServiceErrors.Create(AiServiceErrors.Timeout));
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
-            _logger.LogWarning(exception, "{OperationName} request failed.", operationName);
-            return Result<TReply>.Failure(CreateUnavailableError("ia.servico_indisponivel"));
+            cancellationToken.ThrowIfCancellationRequested();
+            _logger.LogWarning("{OperationName} connection failed. Path={Path} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                operationName, path, stopwatch.ElapsedMilliseconds, GetCorrelationId(message.Headers));
+            return Result<TReply>.Failure(AiServiceErrors.Create(AiServiceErrors.Unavailable));
         }
-        catch (JsonException exception)
+        catch (IOException)
         {
-            _logger.LogWarning(exception, "{OperationName} returned invalid JSON.", operationName);
-            return Result<TReply>.Failure(CreateUnavailableError("ia.servico_indisponivel"));
+            cancellationToken.ThrowIfCancellationRequested();
+            string code = deadline.IsCancellationRequested ? AiServiceErrors.Timeout : AiServiceErrors.Unavailable;
+            _logger.LogWarning("{OperationName} response read failed. Path={Path} DurationMs={DurationMs} ErrorCode={ErrorCode} CorrelationId={CorrelationId}",
+                operationName, path, stopwatch.ElapsedMilliseconds, code, GetCorrelationId(message.Headers));
+            return Result<TReply>.Failure(AiServiceErrors.Create(code));
+        }
+        catch (JsonException)
+        {
+            _logger.LogWarning("{OperationName} returned invalid JSON. Path={Path} DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                operationName, path, stopwatch.ElapsedMilliseconds, GetCorrelationId(message.Headers));
+            return Result<TReply>.Failure(AiServiceErrors.Create(AiServiceErrors.InvalidResponse));
         }
     }
 
-    private static Error CreateUnavailableError(string code)
+    private static string ErrorCodeForStatus(HttpStatusCode status) => status switch
     {
-        return new Error(code, "IA indisponível no momento. Sem problemas, podemos tentar novamente em instantes.");
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => AiServiceErrors.Authentication,
+        HttpStatusCode.GatewayTimeout or HttpStatusCode.RequestTimeout => AiServiceErrors.Timeout,
+        HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests => AiServiceErrors.Unavailable,
+        _ => AiServiceErrors.BadGateway
+    };
+
+    private static bool IsJsonContent(HttpContent content)
+    {
+        string? mediaType = content.Headers.ContentType?.MediaType;
+        return mediaType is not null && (mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase)
+            || mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<string> ReadResponseBodySnippetAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        try
-        {
-            string body = await response.Content.ReadAsStringAsync(cancellationToken);
-            return body.Length <= 500 ? body : body[..500];
-        }
-        catch (Exception)
-        {
-            return "<não foi possível ler o corpo da resposta>";
-        }
-    }
+    private static string? GetCorrelationId(System.Net.Http.Headers.HttpHeaders headers) =>
+        headers.TryGetValues("X-Correlation-ID", out var values) && Guid.TryParse(values.FirstOrDefault(), out Guid id)
+            ? id.ToString()
+            : null;
 
     private static AiRecommendationRationale CreateDefaultRationale(bool fallbackUsed)
     {
@@ -424,7 +465,8 @@ public sealed class AiCoachHttpClient : IAiCoachClient
 
     private sealed record AiLabelRecognitionHttpRequest(
         [property: JsonPropertyName("image_base64")] string ImageBase64,
-        [property: JsonPropertyName("extracted_text")] string? ExtractedText);
+        [property: JsonPropertyName("extracted_text")] string? ExtractedText,
+        [property: JsonPropertyName("label_context")] string? LabelContext);
 
     private sealed record AiLabelRecognitionHttpResponse(
         [property: JsonPropertyName("serving_size")] string? ServingSize,

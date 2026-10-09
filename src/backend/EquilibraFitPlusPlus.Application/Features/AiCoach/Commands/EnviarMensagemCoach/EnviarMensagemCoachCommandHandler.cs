@@ -20,7 +20,7 @@ namespace EquilibraFitPlusPlus.Application.Features.AiCoach.Commands.EnviarMensa
 /// </summary>
 public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMensagemCoachCommand, Result<CoachReplyResponse>>
 {
-    private const string HealthDisclaimer = "O Coach IA orienta e educa, mas não substitui médicos, nutricionistas ou profissionais habilitados.";
+    private const string HealthDisclaimer = CoachResponseGuard.HealthDisclaimer;
     private const string SystemPromptVersion = "coach-safety-v1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -79,6 +79,11 @@ public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMe
         Result<AiCoachClientReply> coachReply = await _aiCoachClient.EnviarAsync(
             new AiCoachClientRequest(command.TenantId, command.UsuarioId, session.Id, command.Request.Mensagem.Trim(), SystemPromptVersion, contextJson),
             cancellationToken);
+
+        if (coachReply.IsFailure && coachReply.Errors.Any(AiServiceErrors.IsInfrastructureError))
+        {
+            return Result<CoachReplyResponse>.Failure(coachReply.Errors);
+        }
 
         AiCoachClientReply reply = coachReply.IsSuccess
             ? coachReply.Value!

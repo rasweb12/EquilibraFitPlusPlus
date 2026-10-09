@@ -34,10 +34,14 @@ Da raiz do novo projeto, com Flutter no PATH:
 ./scripts/Build-AndroidRelease.ps1
 # Para Flutter instalado fora do PATH:
 ./scripts/Build-AndroidRelease.ps1 -FlutterCommand C:/develop/flutter/bin/flutter.bat
+# AAB opcional, quando o teste no Google Play for retomado:
+./scripts/Build-AndroidRelease.ps1 -BuildAppBundle
 ```
 
 O script verifica assinatura configurada e URL HTTPS publica; executa
-pub get, analyze e test antes de gerar APK e AAB, interrompendo na falha.
+pub get, analyze e test antes de gerar APK Release, interrompendo na falha.
+AAB so e gerado com -BuildAppBundle; Google Play nao e requisito para
+instalacao direta de um APK assinado em um Android de teste.
 Gradle continua exigindo assinatura real, sem fallback para chave debug.
 O build nao envia arquivos para Google Play nem habilita Premium no Render.
 
@@ -51,7 +55,8 @@ build/app/outputs/bundle/release/app-release.aab
 Conferir assinatura com `apksigner verify --verbose --print-certs` do SDK Android
 e package/version com `apkanalyzer manifest application-id`/`version-code`.
 Validar hash SHA256 antes de distribuir. Ambos os artefatos sao ignorados pelo Git.
-Enviar AAB ao teste interno do NOVO app Play; configurar Play App Signing.
+Quando Google Play for retomado, enviar AAB ao teste interno do NOVO app Play;
+configurar Play App Signing. Nenhum upload e automatico.
 Teste real de assinatura exige package correspondente, produtos ativos e
 license testers. O debug com sufixo `.dev` NAO testa produtos do app publicado.
 

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MealRecognizeRequest(BaseModel):
@@ -18,6 +18,7 @@ class MealTextEstimateRequest(BaseModel):
 
 class RecognizedFoodItem(BaseModel):
     """Recognized food item."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     name: str
     portion: float = Field(ge=0)

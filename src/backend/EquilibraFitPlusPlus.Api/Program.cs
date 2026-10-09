@@ -1,4 +1,4 @@
-using System.Threading.RateLimiting;
+using EquilibraFitPlusPlus.Api.Authentication;
 using EquilibraFitPlusPlus.Api.Middleware;
 using EquilibraFitPlusPlus.Application;
 using EquilibraFitPlusPlus.Infrastructure;
@@ -80,13 +80,7 @@ try
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.AddFixedWindowLimiter("auth", limiter =>
-        {
-            limiter.PermitLimit = 10;
-            limiter.Window = TimeSpan.FromMinutes(1);
-            limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            limiter.QueueLimit = 0;
-        });
+        options.AddPolicy("auth", new AuthRateLimitPolicy());
     });
 
     builder.Services.AddHealthChecks().AddCheck<DatabaseReadyHealthCheck>("database", tags: ["ready"]);

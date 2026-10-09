@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SafetyNotice(BaseModel):
@@ -10,6 +10,7 @@ class SafetyNotice(BaseModel):
 
 class MacroTargets(BaseModel):
     """Macronutrient targets."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     calories: int = Field(ge=0)
     protein_g: float = Field(ge=0)

@@ -1,13 +1,17 @@
 
 import logging
+import os
+import re
+from contextlib import asynccontextmanager
+from time import perf_counter
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, correlation_id
-
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,17 @@ def create_app() -> FastAPI:
         )
 
     configure_logging(settings.log_level)
+    commit = os.getenv("RENDER_GIT_COMMIT", "")
+    revision = commit[:12] if re.fullmatch(r"[0-9a-fA-F]{40,64}", commit) else "unknown"
+    process = {"process_id": os.getpid(), "revision": revision}
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        logger.info("service.started", extra=process)
+        try:
+            yield
+        finally:
+            logger.info("service.stopped", extra=process)
 
     # --------------------------------------------------
     # AI provider configuration
@@ -57,6 +72,7 @@ def create_app() -> FastAPI:
     # --------------------------------------------------
 
     app = FastAPI(
+        lifespan=lifespan,
         title="EquilibraFit++ AI",
         version="0.2.0",
         description=(
@@ -82,18 +98,29 @@ def create_app() -> FastAPI:
             identifier = str(uuid4())
 
         token = correlation_id.set(identifier)
+        started = perf_counter()
+        fields = {"method": request.method, "path": request.url.path[:256], **process}
+        requests_logger = logging.getLogger("requests")
+        requests_logger.info("request.started", extra=fields)
 
         try:
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except Exception as exception:  # noqa: BLE001 -- safe HTTP boundary, never log request or exception text
+                requests_logger.error("request.failed", extra={**fields, "error_type": type(exception).__name__})
+                response = JSONResponse(status_code=500, content={
+                    "code": "ai.internal_error",
+                    "message": "AI temporarily unavailable.",
+                    "correlation_id": identifier,
+                })
 
             response.headers["X-Correlation-ID"] = identifier
 
-            logging.getLogger("requests").info(
-                "%s %s %s",
-                request.method,
-                request.url.path,
-                response.status_code,
-            )
+            requests_logger.info("request.completed", extra={
+                **fields,
+                "status_code": response.status_code,
+                "duration_ms": round((perf_counter() - started) * 1000, 2),
+            })
 
             return response
 
@@ -117,6 +144,7 @@ def create_app() -> FastAPI:
         return {
             "status": "Healthy",
             "service": "equilibrafit-plusplus-ai",
+            "revision": revision,
             "provider": provider,
             "model": settings.model_for_provider(provider),
         }

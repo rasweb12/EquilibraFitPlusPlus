@@ -8,13 +8,17 @@ correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=No
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        return json.dumps({
+        fields = {
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
             "correlation_id": correlation_id.get(),
-        })
+        }
+        for name in ("method", "path", "status_code", "duration_ms", "error_type", "process_id", "revision"):
+            if hasattr(record, name):
+                fields[name] = getattr(record, name)
+        return json.dumps(fields)
 
 
 def configure_logging(level: str) -> None:

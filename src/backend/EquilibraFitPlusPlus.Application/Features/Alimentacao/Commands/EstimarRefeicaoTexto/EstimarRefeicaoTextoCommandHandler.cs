@@ -39,6 +39,11 @@ public sealed class EstimarRefeicaoTextoCommandHandler : IRequestHandler<Estimar
             new AiMealTextEstimationClientRequest(command.Request.Descricao.Trim(), command.Request.TipoRefeicao?.Trim()),
             cancellationToken);
 
+        if (aiResult.IsFailure && aiResult.Errors.Any(AiServiceErrors.IsInfrastructureError))
+        {
+            return Result<RefeicaoTextoEstimadaResponse>.Failure(aiResult.Errors);
+        }
+
         AiMealTextEstimationClientReply reply = aiResult.IsSuccess
             ? aiResult.Value!
             : CreateHybridEstimate(command.Request.Descricao);

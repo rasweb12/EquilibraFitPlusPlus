@@ -80,7 +80,7 @@ class GeminiProvider:
 
             return content.strip() if content else None
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - optional SDK failures must degrade safely
             logger.warning(
                 "Gemini text request failed: %s",
                 type(exc).__name__,
@@ -115,7 +115,7 @@ class GeminiProvider:
 
             return self._parse_json(response.text)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - invalid provider responses use safe fallback
             logger.warning(
                 "Gemini JSON request failed: %s",
                 type(exc).__name__,
@@ -177,7 +177,7 @@ class GeminiProvider:
 
             return self._parse_json(response.text)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - vision failures must require manual review
             logger.warning(
                 "Gemini image request failed: %s",
                 type(exc).__name__,

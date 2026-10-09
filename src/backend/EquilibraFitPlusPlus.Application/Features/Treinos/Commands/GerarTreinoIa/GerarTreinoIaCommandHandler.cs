@@ -118,6 +118,11 @@ public sealed class GerarTreinoIaCommandHandler : IRequestHandler<GerarTreinoIaC
                 WorkoutPromptVersion),
             cancellationToken);
 
+        if (aiResult.IsFailure && aiResult.Errors.Any(AiServiceErrors.IsInfrastructureError))
+        {
+            return Result<TreinoIaGeradoResponse>.Failure(aiResult.Errors);
+        }
+
         AiWorkoutGenerationClientReply generated = aiResult.IsSuccess
             ? aiResult.Value!
             : CreateHybridWorkout(objective, level, daysPerWeek, limitations, equipment, priorityGroups, durationMinutes, workoutContext);

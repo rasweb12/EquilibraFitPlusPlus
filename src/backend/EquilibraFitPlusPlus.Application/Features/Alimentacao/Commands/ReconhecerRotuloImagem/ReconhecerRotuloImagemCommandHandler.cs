@@ -48,7 +48,7 @@ public sealed class ReconhecerRotuloImagemCommandHandler : IRequestHandler<Recon
         }
 
         Result<AiLabelRecognitionClientReply> aiResult = await _aiCoachClient.ReconhecerRotuloAsync(
-            new AiLabelRecognitionClientRequest(command.Request.ImageBase64, command.Request.Contexto),
+            new AiLabelRecognitionClientRequest(command.Request.ImageBase64, null, command.Request.Contexto),
             cancellationToken);
 
         if (aiResult.IsFailure)

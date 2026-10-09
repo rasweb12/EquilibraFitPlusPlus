@@ -1,6 +1,7 @@
 param(
     [uri]$ApiUrl = 'https://equilibrafit-plusplus-api-4lkw.onrender.com',
-    [string]$FlutterCommand = 'flutter'
+    [string]$FlutterCommand = 'flutter',
+    [switch]$BuildAppBundle
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,8 +37,12 @@ try {
     Invoke-Flutter -Arguments @('test')
     $apiDefine = '--dart-define=API_BASE_URL=' + $ApiUrl.AbsoluteUri.TrimEnd('/')
     Invoke-Flutter -Arguments @('build', 'apk', '--release', $apiDefine)
-    Invoke-Flutter -Arguments @('build', 'appbundle', '--release', $apiDefine)
-    foreach ($relative in @('build/app/outputs/flutter-apk/app-release.apk', 'build/app/outputs/bundle/release/app-release.aab')) {
+    $artifacts = @('build/app/outputs/flutter-apk/app-release.apk')
+    if ($BuildAppBundle) {
+        Invoke-Flutter -Arguments @('build', 'appbundle', '--release', $apiDefine)
+        $artifacts += 'build/app/outputs/bundle/release/app-release.aab'
+    }
+    foreach ($relative in $artifacts) {
         $artifact = Join-Path $mobile $relative
         if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) { throw 'Expected release artifact is missing.' }
         Get-FileHash -LiteralPath $artifact -Algorithm SHA256 | Select-Object Path, Hash

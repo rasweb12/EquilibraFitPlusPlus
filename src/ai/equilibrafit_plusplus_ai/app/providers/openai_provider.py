@@ -20,7 +20,8 @@ class OpenAiTextProvider:
         try:
             from openai import AsyncOpenAI
 
-            self._client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.request_timeout_seconds)
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key,
+                                       timeout=settings.request_timeout_seconds, max_retries=0)
         except ImportError:
             logger.warning("OpenAI package is not installed; fallback responses will be used.")
 
@@ -42,6 +43,7 @@ class OpenAiTextProvider:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.4,
+                max_output_tokens=self._settings.ai_max_output_tokens,
             )
             output_text = getattr(response, "output_text", None)
             return output_text.strip() if output_text else None
@@ -87,6 +89,7 @@ class OpenAiTextProvider:
                     },
                 ],
                 temperature=0.2,
+                max_output_tokens=self._settings.ai_max_output_tokens,
             )
             output_text = getattr(response, "output_text", None)
             return _extract_json_object(output_text)

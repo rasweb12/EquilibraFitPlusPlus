@@ -1,5 +1,3 @@
-import base64
-import binascii
 import logging
 import re
 import unicodedata
@@ -8,6 +6,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.providers.ai_provider_router import AiProviderRouter
+from app.providers.image_input import decode_image
 from app.schemas.labels import LabelRecognizeRequest, LabelRecognizeResponse
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ class LabelRecognitionService:
             return self._from_text(request.extracted_text)
 
         if request.image_base64:
-            result = await self._recognize_with_ai(request.image_base64)
+            result = await self._recognize_with_ai(request.image_base64, request.label_context)
             if result is not None:
                 return result
 
@@ -61,22 +60,12 @@ class LabelRecognitionService:
             message="Dados extraídos do texto. Confirme a porção e os valores antes de salvar." if count else "Nenhum valor nutricional reconhecido; preencha manualmente.",
         )
 
-    async def _recognize_with_ai(self, image_base64: str) -> LabelRecognizeResponse | None:
+    async def _recognize_with_ai(self, image_base64: str, label_context: str | None = None) -> LabelRecognizeResponse | None:
         # The providers accept raw base64 bytes; data URLs are intentionally rejected.
-        try:
-            image_bytes = base64.b64decode(image_base64, validate=True)
-        except (ValueError, binascii.Error):
+        decoded = decode_image(image_base64)
+        if decoded is None:
             return None
-        if not image_bytes or len(image_bytes) > 10 * 1024 * 1024:
-            return None
-        if image_bytes.startswith(b"\xff\xd8\xff"):
-            mime_type = "image/jpeg"
-        elif image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-            mime_type = "image/png"
-        elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
-            mime_type = "image/webp"
-        else:
-            return None
+        mime_type = decoded[1]
 
         system_prompt = (
             "Você extrai dados nutricionais de rótulos para o EquilibraFit++. "
@@ -93,27 +82,26 @@ class LabelRecognitionService:
             "fallback_used (false) e message (string). "
             "Use a mesma porção para todos os valores. "
             "Não deduza dados ausentes e não use valores por 100 g como se fossem por porção."
+            f"\nContexto do usuario (nao e texto extraido do rotulo): {label_context or 'nao informado'}"
         )
-        payload = await self._provider.analyze_image_json(
+        result = await self._provider.analyze_image_json_result(
             feature="labels",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             image_base64=image_base64,
             mime_type=mime_type,
         )
-        if payload is None:
+        if result.payload is None:
             return None
         try:
-            response = LabelRecognizeResponse.model_validate(payload)
+            response = LabelRecognizeResponse.model_validate(result.payload)
         except (ValidationError, ValueError, TypeError):
             logger.warning("Invalid nutrition label AI response; requesting manual review")
             return None
 
         # Never trust the model to supply provider metadata or review requirements.
-        response.model = self._provider.last_model or self._settings.model_for_provider(
-            self._settings.labels_provider
-        )
-        response.fallback_used = self._provider.fallback_used
+        response.model = result.model
+        response.fallback_used = result.fallback_used
         response.requires_user_review = True
         response.confidence = min(max(response.confidence, 0.0), 100.0)
         response.message = "Dados extraídos do rótulo. Confira porção e valores antes de salvar."

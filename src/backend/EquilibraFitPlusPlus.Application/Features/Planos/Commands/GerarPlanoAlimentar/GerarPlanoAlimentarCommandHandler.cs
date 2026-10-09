@@ -75,6 +75,11 @@ public sealed class GerarPlanoAlimentarCommandHandler : IRequestHandler<GerarPla
                 instructions?.ToPromptFragment()),
             cancellationToken);
 
+        if (aiResult.IsFailure && aiResult.Errors.Any(AiServiceErrors.IsInfrastructureError))
+        {
+            return Result<PlanoAlimentarGeradoResponse>.Failure(aiResult.Errors);
+        }
+
         AiPlanGenerationClientReply generated = aiResult.IsSuccess
             ? aiResult.Value!
             : CreateHybridPlan(perfil, bounds, preferences, restrictions);

@@ -1,238 +1,89 @@
-
+import asyncio
 import logging
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any
 
 from app.core.config import Settings
-from app.providers.openai_provider import OpenAiTextProvider
 from app.providers.gemini_provider import GeminiProvider
+from app.providers.openai_provider import OpenAiTextProvider
 
 logger = logging.getLogger(__name__)
 
-ProviderName = Literal["openai", "gemini"]
+
+@dataclass(frozen=True)
+class AiProviderResult:
+    payload: Any = None
+    provider: str | None = None
+    model: str | None = None
+    fallback_used: bool = False
+    error_type: str | None = None
 
 
 class AiProviderRouter:
-    """Select AI providers by feature and handle optional fallback."""
-
-    FEATURE_FIELDS = {
-        "coach": "coach_provider",
-        "workouts": "workouts_provider",
-        "plans": "plans_provider",
-        "meals": "meals_provider",
-        "meal_text": "meal_text_provider",
-        "labels": "labels_provider",
-    }
+    """Select configured providers; metadata belongs to each individual call."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-
         self._providers = {
             "openai": OpenAiTextProvider(settings),
             "gemini": GeminiProvider(settings),
         }
 
-        self.last_provider: str | None = None
-        self.last_model: str | None = None
-        self.fallback_used: bool = False
+    async def _execute(self, *, feature: str, method: str, **kwargs: Any) -> AiProviderResult:
+        policy = self._settings.provider_for_feature(feature)
+        candidates = [policy.primary] + ([policy.fallback] if policy.fallback else [])
+        error_type = "unconfigured"
+        # The deadline covers all attempts, not a new full timeout per provider.
+        try:
+            async with asyncio.timeout(self._settings.request_timeout_seconds):
+                for index, name in enumerate(candidates):
+                    provider = self._providers[name]
+                    if not provider.is_configured:
+                        error_type = "unconfigured"
+                        continue
+                    model = self._settings.model_for_provider(name)
+                    try:
+                        payload = await getattr(provider, method)(model=model, **kwargs)
+                    except Exception as exc:  # noqa: BLE001 - SDK failures must degrade safely
+                        error_type = type(exc).__name__
+                        logger.warning("AI provider failed: feature=%s provider=%s error=%s",
+                                       feature, name, error_type)
+                        continue
+                    valid = (isinstance(payload, str) and bool(payload.strip())
+                             if method == "complete" else isinstance(payload, dict))
+                    if valid:
+                        logger.info("AI request completed: feature=%s provider=%s model=%s fallback=%s",
+                                    feature, name, model, index > 0)
+                        return AiProviderResult(payload, name, model, index > 0)
+                    error_type = "invalid_response"
+        except TimeoutError:
+            error_type = "timeout"
+        logger.warning("AI request unavailable: feature=%s error=%s", feature, error_type)
+        return AiProviderResult(error_type=error_type)
 
-    def _primary_for(self, feature: str) -> ProviderName:
-        default = getattr(self._settings, "provider", "openai")
+    async def complete_result(self, *, feature: str, system_prompt: str,
+                              user_prompt: str) -> AiProviderResult:
+        return await self._execute(feature=feature, method="complete",
+                                   system_prompt=system_prompt, user_prompt=user_prompt)
 
-        field = self.FEATURE_FIELDS.get(feature)
+    async def complete_json_result(self, *, feature: str, system_prompt: str,
+                                   user_prompt: str) -> AiProviderResult:
+        return await self._execute(feature=feature, method="complete_json",
+                                   system_prompt=system_prompt, user_prompt=user_prompt)
 
-        selected = (
-            getattr(self._settings, field, default)
-            if field
-            else default
-        )
+    async def analyze_image_json_result(self, *, feature: str, system_prompt: str,
+                                       user_prompt: str, image_base64: str,
+                                       mime_type: str = "image/jpeg") -> AiProviderResult:
+        return await self._execute(feature=feature, method="analyze_image_json",
+                                   system_prompt=system_prompt, user_prompt=user_prompt,
+                                   image_base64=image_base64, mime_type=mime_type)
 
-        if selected not in self._providers:
-            raise ValueError(
-                f"Invalid AI provider for feature: {feature}"
-            )
+    # Keep payload-only helpers for existing internal integrations.
+    async def complete(self, **kwargs: Any) -> str | None:
+        return (await self.complete_result(**kwargs)).payload
 
-        return selected
+    async def complete_json(self, **kwargs: Any) -> dict | None:
+        return (await self.complete_json_result(**kwargs)).payload
 
-    def _fallback_for(
-        self,
-        primary: ProviderName,
-    ) -> ProviderName | None:
-
-        enabled = getattr(
-            self._settings,
-            "fallback_enabled",
-            False,
-        )
-
-        if not enabled:
-            return None
-
-        configured = getattr(
-            self._settings,
-            "fallback_provider",
-            None,
-        )
-
-        # A global fallback can be configured explicitly.
-        if configured in self._providers:
-            if configured != primary:
-                return configured
-
-            # When both providers are configured,
-            # automatically choose the other provider.
-            return (
-                "gemini"
-                if primary == "openai"
-                else "openai"
-            )
-
-        # No configured fallback: use the other provider.
-        return (
-            "gemini"
-            if primary == "openai"
-            else "openai"
-        )
-
-    def _model_for(self, provider: ProviderName) -> str:
-        if provider == "gemini":
-            return getattr(
-                self._settings,
-                "gemini_model",
-                "gemini-2.5-flash",
-            )
-
-        return self._settings.openai_model
-
-    async def _execute(
-        self,
-        *,
-        feature: str,
-        method: str,
-        **kwargs: Any,
-    ) -> Any:
-        """Execute a provider operation with optional fallback."""
-
-        self.last_provider = None
-        self.last_model = None
-        self.fallback_used = False
-
-        primary = self._primary_for(feature)
-        fallback = self._fallback_for(primary)
-
-        candidates = [primary]
-
-        if fallback and fallback != primary:
-            candidates.append(fallback)
-
-        for index, name in enumerate(candidates):
-            provider = self._providers[name]
-
-            if not provider.is_configured:
-                logger.warning(
-                    "AI provider unavailable: feature=%s provider=%s",
-                    feature,
-                    name,
-                )
-                continue
-
-            model = self._model_for(name)
-
-            try:
-                operation = getattr(provider, method)
-
-                result = await operation(
-                    model=model,
-                    **kwargs,
-                )
-
-            except Exception as exc:
-                logger.warning(
-                    "AI provider exception: feature=%s "
-                    "provider=%s error=%s",
-                    feature,
-                    name,
-                    type(exc).__name__,
-                )
-                result = None
-
-            if result is not None:
-                self.last_provider = name
-                self.last_model = model
-                self.fallback_used = index > 0
-
-                logger.info(
-                    "AI request completed: feature=%s "
-                    "provider=%s model=%s fallback=%s",
-                    feature,
-                    name,
-                    model,
-                    self.fallback_used,
-                )
-
-                return result
-
-            logger.warning(
-                "AI provider returned no result: "
-                "feature=%s provider=%s",
-                feature,
-                name,
-            )
-
-        logger.error(
-            "All AI providers failed: feature=%s",
-            feature,
-        )
-
-        return None
-
-    async def complete(
-        self,
-        *,
-        feature: str,
-        system_prompt: str,
-        user_prompt: str,
-    ) -> str | None:
-        """Generate a text response."""
-
-        return await self._execute(
-            feature=feature,
-            method="complete",
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-        )
-
-    async def complete_json(
-        self,
-        *,
-        feature: str,
-        system_prompt: str,
-        user_prompt: str,
-    ) -> dict | None:
-        """Generate a JSON response."""
-
-        return await self._execute(
-            feature=feature,
-            method="complete_json",
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-        )
-
-    async def analyze_image_json(
-        self,
-        *,
-        feature: str,
-        system_prompt: str,
-        user_prompt: str,
-        image_base64: str,
-        mime_type: str = "image/jpeg",
-    ) -> dict | None:
-        """Analyze an image and return JSON."""
-
-        return await self._execute(
-            feature=feature,
-            method="analyze_image_json",
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            image_base64=image_base64,
-            mime_type=mime_type,
-        )
+    async def analyze_image_json(self, **kwargs: Any) -> dict | None:
+        return (await self.analyze_image_json_result(**kwargs)).payload

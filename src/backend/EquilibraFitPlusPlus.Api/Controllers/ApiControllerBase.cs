@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EquilibraFitPlusPlus.Application.Abstractions.AiCoach;
 using EquilibraFitPlusPlus.Contracts.Common;
 using EquilibraFitPlusPlus.Shared.Results;
 using Microsoft.AspNetCore.Mvc;
@@ -76,6 +77,18 @@ public abstract class ApiControllerBase : ControllerBase
         string code = result.Errors.FirstOrDefault()?.Code ?? "request_error";
         string message = result.Errors.FirstOrDefault()?.Message ?? "Não foi possível concluir a solicitação.";
         var response = new ApiErrorResponse(traceId, code, message, details);
+
+        int? aiStatus = code switch
+        {
+            AiServiceErrors.Timeout => StatusCodes.Status504GatewayTimeout,
+            AiServiceErrors.Unavailable or AiServiceErrors.NotConfigured => StatusCodes.Status503ServiceUnavailable,
+            AiServiceErrors.BadGateway or AiServiceErrors.Authentication or AiServiceErrors.InvalidResponse => StatusCodes.Status502BadGateway,
+            _ => null
+        };
+        if (aiStatus.HasValue)
+        {
+            return StatusCode(aiStatus.Value, response);
+        }
 
         if (code is "auth.provider_timeout" or "auth.provider_unavailable")
         {

@@ -4,6 +4,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using EquilibraFitPlusPlus.Application.Abstractions.AiCoach;
+using EquilibraFitPlusPlus.Infrastructure.AiCoach;
+using EquilibraFitPlusPlus.Contracts.Common;
 using EquilibraFitPlusPlus.Domain.Entities;
 using EquilibraFitPlusPlus.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -12,6 +15,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -152,6 +157,79 @@ public sealed class SupabaseAuthorizationTests
         }
     }
 
+    [Theory]
+    [InlineData(false, 502, false, 502, AiServiceErrors.BadGateway)]
+    [InlineData(true, 502, false, 502, AiServiceErrors.BadGateway)]
+    [InlineData(false, 401, false, 502, AiServiceErrors.Authentication)]
+    [InlineData(true, 401, false, 502, AiServiceErrors.Authentication)]
+    [InlineData(false, 200, false, 502, AiServiceErrors.InvalidResponse)]
+    [InlineData(true, 200, false, 502, AiServiceErrors.InvalidResponse)]
+    [InlineData(false, 503, false, 503, AiServiceErrors.Unavailable)]
+    [InlineData(true, 503, false, 503, AiServiceErrors.Unavailable)]
+    [InlineData(false, 200, true, 504, AiServiceErrors.Timeout)]
+    [InlineData(true, 200, true, 504, AiServiceErrors.Timeout)]
+    public async Task AiTransportFailure_ShouldReturnSafeStatusAndNeverPersistFallback(bool meal, int upstreamStatus, bool delay, int expectedStatus, string code)
+    {
+        using var factory = new ApiFactory();
+        factory.AiProvider.Status = (HttpStatusCode)upstreamStatus;
+        factory.AiProvider.Delay = delay;
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token());
+        string correlation = Guid.NewGuid().ToString();
+        client.DefaultRequestHeaders.Add("X-Correlation-ID", correlation);
+        using var response = meal
+            ? await client.PostAsJsonAsync("/api/v1/alimentacao/reconhecer-refeicao", new { imageBase64 = "aW1hZ2U=", tipoRefeicao = "Almoco" })
+            : await client.PostAsJsonAsync("/api/v1/ia/coach/mensagens", new { mensagem = "Como ajustar a rotina?" });
+        Assert.Equal(expectedStatus, (int)response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal(code, error.Code);
+        Assert.DoesNotContain("clinico", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("private-user-and-key", error.Message);
+        Assert.Equal(correlation, response.Headers.GetValues("X-Correlation-ID").Single());
+        Assert.Equal(correlation, factory.AiProvider.Correlation);
+        Assert.Equal(1, factory.AiProvider.Calls);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EquilibraFitPlusPlusDbContext>();
+        Assert.Empty(await db.Set<ChatSession>().ToListAsync());
+        Assert.Empty(await db.Set<AnaliseRefeicaoImagem>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Coach_ShouldPreserveClinicalGuardAndSuccessfulRulesFallback()
+    {
+        using var factory = new ApiFactory();
+        factory.AiProvider.Status = HttpStatusCode.OK;
+        factory.AiProvider.Body = """{"conteudo":"Prescrevo um tratamento.","modelo":"fixture"}""";
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token());
+        using var blocked = await client.PostAsJsonAsync("/api/v1/ia/coach/mensagens", new { mensagem = "Como ajustar a rotina?" });
+        Assert.Equal(HttpStatusCode.BadRequest, blocked.StatusCode);
+        Assert.Equal("ia.coach_risco_clinico", (await blocked.Content.ReadFromJsonAsync<ApiErrorResponse>())!.Code);
+        factory.AiProvider.Body = """{"conteudo":"Sem problemas. Vamos ajustar a rotina em pequenos passos.","modelo":"equilibrafit-coach-rules-v1","fallback_used":true}""";
+        using var accepted = await client.PostAsJsonAsync("/api/v1/ia/coach/mensagens", new { mensagem = "Como ajustar a rotina?" });
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Single(await scope.ServiceProvider.GetRequiredService<EquilibraFitPlusPlusDbContext>().Set<ChatSession>().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Coach_ApprovedDisclaimerShouldNotTriggerClinicalBlock(bool unsafeClaim)
+    {
+        using var factory = new ApiFactory();
+        factory.AiProvider.Status = HttpStatusCode.OK;
+        string content = "O Coach IA orienta e educa, mas não substitui médicos, nutricionistas ou profissionais habilitados.";
+        if (unsafeClaim) content = "Este Coach substitui seu médico. " + content;
+        factory.AiProvider.Body = System.Text.Json.JsonSerializer.Serialize(new { conteudo = content, modelo = "fixture" });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token());
+        using var response = await client.PostAsJsonAsync("/api/v1/ia/coach/mensagens", new { mensagem = "Como ajustar a rotina?" });
+        Assert.Equal(unsafeClaim ? HttpStatusCode.BadRequest : HttpStatusCode.OK, response.StatusCode);
+        if (unsafeClaim)
+            Assert.Equal("ia.coach_risco_clinico", (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!.Code);
+    }
+
     private sealed class ApiFactory : WebApplicationFactory<Program>
     {
         private const string Issuer = "https://supabase.example.test/auth/v1";
@@ -160,6 +238,8 @@ public sealed class SupabaseAuthorizationTests
         private readonly string _database = Path.Combine(Path.GetTempPath(), $"equilibrafit-pp-test-{Guid.NewGuid():N}.db");
         internal Guid Subject { get; } = Guid.NewGuid();
         internal ProviderHandler Provider { get; } = new();
+        internal AiProviderHandler AiProvider { get; } = new();
+        private HttpClient? _aiHttp;
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
@@ -171,6 +251,13 @@ public sealed class SupabaseAuthorizationTests
             {
                 Provider.Subject = Subject;
                 services.AddSingleton<IHttpClientFactory>(new ProviderClients(Provider));
+                services.AddSingleton<IAiCoachClient>(provider =>
+                {
+                    var handler = new AiCorrelationHandler(provider.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>())
+                        { InnerHandler = AiProvider };
+                    _aiHttp = new HttpClient(handler) { BaseAddress = new Uri("https://ai.example.test"), Timeout = TimeSpan.FromMilliseconds(100) };
+                    return new AiCoachHttpClient(_aiHttp, Options.Create(new AiCoachOptions()), provider.GetRequiredService<ILogger<AiCoachHttpClient>>());
+                });
                 services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
                     var config = new OpenIdConnectConfiguration { Issuer = Issuer };
@@ -196,13 +283,36 @@ public sealed class SupabaseAuthorizationTests
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            if (disposing) _rsa.Dispose();
+            if (disposing)
+            {
+                _rsa.Dispose();
+                _aiHttp?.Dispose();
+            }
         }
     }
 
     private sealed class ProviderClients(ProviderHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class AiProviderHandler : HttpMessageHandler
+    {
+        internal HttpStatusCode Status { get; set; } = HttpStatusCode.BadGateway;
+        internal string Body { get; set; } = "<html>private-user-and-key</html>";
+        internal bool Delay { get; set; }
+        internal int Calls { get; private set; }
+        internal string? Correlation { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++;
+            Correlation = request.Headers.GetValues("X-Correlation-ID").Single();
+            if (Delay) await Task.Delay(System.Threading.Timeout.Infinite, ct);
+            var response = new HttpResponseMessage(Status)
+                { Content = new StringContent(Body, System.Text.Encoding.UTF8, Status == HttpStatusCode.OK ? "application/json" : "text/html") };
+            response.Headers.Add("X-Correlation-ID", Correlation);
+            return response;
+        }
     }
 
     private sealed class ProviderHandler : HttpMessageHandler

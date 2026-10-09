@@ -74,7 +74,8 @@ public sealed record AiMealTextEstimationClientRequest(
 /// </summary>
 public sealed record AiLabelRecognitionClientRequest(
     string ImageBase64,
-    string? ExtractedText);
+    string? ExtractedText,
+    string? LabelContext = null);
 
 /// <summary>
 /// Recognized food item returned by the AI service.

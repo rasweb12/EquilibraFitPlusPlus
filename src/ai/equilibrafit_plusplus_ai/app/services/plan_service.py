@@ -9,7 +9,7 @@ class PlanService:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._openai = AiProviderRouter(settings)
+        self._provider = AiProviderRouter(settings)
 
     async def generate(self, request: PlanGenerateRequest) -> PlanGenerateResponse:
         """Generate an AI plan proposal with deterministic hybrid fallback."""
@@ -45,23 +45,23 @@ class PlanService:
             "\"fallback_used\":false"
             "}"
         )
-        payload = await self._provider.complete_json(
+        result = await self._provider.complete_json_result(
             feature="plans",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
-        if payload is None:
+        if result.payload is None:
             return None
 
         try:
-            response = PlanGenerateResponse.model_validate(payload)
+            response = PlanGenerateResponse.model_validate(result.payload)
         except Exception:  # noqa: BLE001 - invalid model output must fallback safely
             return None
 
         bounded_calories = min(max(response.targets.calories, request.min_calories), request.max_calories)
         response.targets.calories = bounded_calories
-        response.model = self._provider.last_model or self._settings.openai_model
-        response.fallback_used = self._provider.fallback_used
+        response.model = result.model
+        response.fallback_used = result.fallback_used
         response.safety_notices.append(
             SafetyNotice(message="Esta proposta não substitui nutricionista ou médico.", requires_professional_review=False)
         )

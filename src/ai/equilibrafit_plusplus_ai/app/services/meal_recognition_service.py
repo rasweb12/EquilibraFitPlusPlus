@@ -2,8 +2,10 @@ import base64
 import logging
 import re
 import unicodedata
+
 from app.core.config import Settings
 from app.providers.ai_provider_router import AiProviderRouter
+from app.providers.image_input import decode_image
 from app.schemas.meals import (
     MealRecognizeRequest,
     MealRecognizeResponse,
@@ -12,6 +14,7 @@ from app.schemas.meals import (
     RecognizedFoodItem,
 )
 from app.services.safety_service import SafetyService
+
 logger = logging.getLogger(__name__)
 class MealRecognitionService:
     """Recognizes meals using optional YOLO/OpenCV and safe fallback."""
@@ -27,20 +30,22 @@ class MealRecognitionService:
         if request.image_base64:
             binary = self._decode_image(request.image_base64)
             if binary is None:
-                return self._manual_review_response(self._safety.safe_fallback("meal"))
+                return self._manual_review_response(
+                    "Imagem invalida. Nenhum valor nutricional foi estimado; registre manualmente."
+                )
             ai_response = await self._recognize_with_ai(request)
             if ai_response is not None:
                 return ai_response
         detected = self._detect_with_yolo(request.image_base64) if request.image_base64 else []
         if detected:
-            confidence = min(95.0, max(item.confidence for item in detected))
             return MealRecognizeResponse(
-                confidence=confidence,
-                items=detected,
+                confidence=0,
+                items=[],
                 requires_user_review=True,
                 model=self._settings.yolo_model_path or "yolo",
-                fallback_used=False,
-                message="Itens estimados. Confirme porções antes de salvar.",
+                fallback_used=True,
+                message="Possiveis itens: " + ", ".join(detected) + ". "
+                        "O detector nao estima porcoes ou nutrientes; preencha e revise manualmente.",
             )
         return self._manual_review_response(
             "Não foi possível interpretar esta foto com segurança. "
@@ -57,7 +62,8 @@ class MealRecognitionService:
             items=items,
             model="equilibrafit-meal-text-rules-v1",
             fallback_used=True,
-            message="Estimativa criada. Revise porções e ajuste antes de salvar.",
+            message=("Estimativa criada. Revise porções e ajuste antes de salvar." if items else
+                     "Nao foi possivel estimar esta descricao; preencha os itens manualmente."),
         )
     def _manual_review_response(self, message: str) -> MealRecognizeResponse:
         return MealRecognizeResponse(
@@ -70,12 +76,8 @@ class MealRecognitionService:
         )
     @staticmethod
     def _decode_image(image_base64: str) -> bytes | None:
-        try:
-            binary = base64.b64decode(image_base64, validate=True)
-            return binary if binary else None
-        except Exception as exception:  # noqa: BLE001 - corrupted images must return review path
-            logger.warning("Meal image decoding failed: %s", exception.__class__.__name__)
-            return None
+        decoded = decode_image(image_base64)
+        return decoded[0] if decoded else None
     async def _recognize_with_ai(self, request: MealRecognizeRequest) -> MealRecognizeResponse | None:
         if not request.image_base64:
             return None
@@ -97,22 +99,26 @@ class MealRecognitionService:
             "\"message\":string"
             "}"
         )
-        payload = await self._provider.analyze_image_json(
+        decoded = decode_image(request.image_base64)
+        if decoded is None:
+            return None
+        result = await self._provider.analyze_image_json_result(
             feature="meals",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             image_base64=request.image_base64,
+            mime_type=decoded[1],
         )
-        if payload is None:
+        if result.payload is None:
             return None
         try:
-            response = MealRecognizeResponse.model_validate(payload)
+            response = MealRecognizeResponse.model_validate(result.payload)
         except Exception:  # noqa: BLE001 - invalid model output must fallback safely
             return None
-        response.model = self._provider.last_model or self._settings.model_for_provider(self._settings.provider)
-        response.fallback_used = self._provider.fallback_used
-        response.requires_user_review = response.requires_user_review or response.confidence < 85
-        response.message = response.message or "Itens estimados. Confirme porções antes de salvar."
+        response.model = result.model
+        response.fallback_used = result.fallback_used
+        response.requires_user_review = True
+        response.message = "Valores estimados, nao medidos. Confirme alimentos e porcoes antes de salvar."
         return response
     async def _estimate_text_with_ai(self, request: MealTextEstimateRequest) -> MealTextEstimateResponse | None:
         system_prompt = (
@@ -132,20 +138,20 @@ class MealRecognitionService:
             "\"message\":string"
             "}"
         )
-        payload = await self._provider.complete_json(
+        result = await self._provider.complete_json_result(
             feature="meal_text",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
-        if payload is None:
+        if result.payload is None:
             return None
         try:
-            response = MealTextEstimateResponse.model_validate(payload)
+            response = MealTextEstimateResponse.model_validate(result.payload)
         except Exception:  # noqa: BLE001 - invalid model output must fallback safely
             return None
-        response.model = self._provider.last_model or self._settings.model_for_provider(self._settings.provider)
-        response.fallback_used = self._provider.fallback_used
-        response.message = response.message or "Estimativa criada. Revise porções e ajuste antes de salvar."
+        response.model = result.model
+        response.fallback_used = result.fallback_used
+        response.message = "Valores estimados, nao medidos. Revise porcoes antes de salvar."
         return response
     def _estimate_text_with_rules(self, description: str) -> list[RecognizedFoodItem]:
         normalized = self._normalize(description)
@@ -187,19 +193,6 @@ class MealRecognitionService:
             items.append(self._portion("frango grelhado", 100, "g", 165, 31, 0, 3.6, 68.0))
         if any(term in normalized for term in ["salada", "alface", "tomate"]):
             items.append(self._portion("salada simples", 1, "porção", 35, 1.5, 6, 0.5, 60.0))
-        if not items:
-            items.append(
-                RecognizedFoodItem(
-                    name="refeição descrita",
-                    portion=1,
-                    unit="porção",
-                    calories=350,
-                    protein_g=18,
-                    carbs_g=42,
-                    fat_g=12,
-                    confidence=45.0,
-                )
-            )
         return items
     @staticmethod
     def _portion(
@@ -242,7 +235,7 @@ class MealRecognitionService:
         except Exception as exception:  # noqa: BLE001 - optional provider must degrade gracefully
             logger.warning("YOLO model could not be loaded: %s", exception.__class__.__name__)
             return None
-    def _detect_with_yolo(self, image_base64: str | None) -> list[RecognizedFoodItem]:
+    def _detect_with_yolo(self, image_base64: str | None) -> list[str]:
         if self._model is None or not image_base64:
             return []
         try:
@@ -252,26 +245,14 @@ class MealRecognitionService:
             array = np.frombuffer(binary, dtype=np.uint8)
             image = cv2.imdecode(array, cv2.IMREAD_COLOR)
             results = self._model.predict(image, verbose=False)
-            items: list[RecognizedFoodItem] = []
+            items: list[str] = []
             for result in results:
                 names = getattr(result, "names", {})
                 boxes = getattr(result, "boxes", [])
                 for box in boxes:
-                    confidence = float(box.conf[0]) * 100
                     class_id = int(box.cls[0])
                     name = str(names.get(class_id, "alimento"))
-                    items.append(
-                        RecognizedFoodItem(
-                            name=name,
-                            portion=100,
-                            unit="g",
-                            calories=180,
-                            protein_g=8,
-                            carbs_g=22,
-                            fat_g=6,
-                            confidence=round(confidence, 2),
-                        )
-                    )
+                    items.append(name)
             return items
         except Exception as exception:  # noqa: BLE001
             logger.warning("YOLO meal detection failed: %s", exception.__class__.__name__)

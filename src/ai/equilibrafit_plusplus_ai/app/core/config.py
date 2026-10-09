@@ -5,7 +5,6 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 AiProviderName = Literal["openai", "gemini"]
 
 
@@ -136,12 +135,8 @@ class Settings(BaseSettings):
     def validate_provider_configuration(self):
         """Validate the fallback configuration."""
 
-        if self.fallback_enabled:
-            if self.fallback_provider is None:
-                raise ValueError(
-                    "Configure FALLBACK_PROVIDER when "
-                    "FALLBACK_ENABLED=true."
-                )
+        if self.fallback_enabled and self.fallback_provider is None:
+            raise ValueError("Configure FALLBACK_PROVIDER when FALLBACK_ENABLED=true.")
 
         return self
 
