@@ -196,6 +196,7 @@ public sealed class EquilibraFitPlusPlusDbContext : DbContext, IUnitOfWork
             entity.ToTable("AuthSessions");
             entity.HasIndex(x => x.SessionId).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.UsuarioId });
+            entity.HasQueryFilter("UsuarioAtivo", x => x.Usuario == null || x.Usuario.ExcluidoEm == null);
             entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<Tenant>(entity =>
@@ -504,8 +505,22 @@ public sealed class EquilibraFitPlusPlusDbContext : DbContext, IUnitOfWork
             entity.Property(x => x.CargaKg).HasPrecision(7, 2);
             entity.Property(x => x.Observacao).HasMaxLength(1000);
             entity.Property(x => x.DorDescricao).HasMaxLength(1000);
-            entity.HasIndex(x => new { x.TreinoExercicioId, x.CriadoEm });
-            entity.HasOne(x => x.Sessao).WithMany(x => x.Series).HasForeignKey(x => x.TreinoSessaoId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new
+            {
+                x.TreinoExercicioId,
+                x.CriadoEm
+            });
+
+            entity.HasQueryFilter(
+                "UsuarioAtivo",
+                x => x.Sessao == null
+                    || x.Sessao.Usuario == null
+                    || x.Sessao.Usuario.ExcluidoEm == null);
+
+            entity.HasOne(x => x.Sessao)
+                .WithMany(x => x.Series)
+                .HasForeignKey(x => x.TreinoSessaoId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.TreinoExercicio).WithMany(x => x.SeriesRealizadas).HasForeignKey(x => x.TreinoExercicioId).OnDelete(DeleteBehavior.Restrict);
             entity.ToTable(t => t.HasCheckConstraint("CK_TreinosSeriesRealizadas_NumeroSerie", "\"NumeroSerie\" BETWEEN 1 AND 20"));
             entity.ToTable(t => t.HasCheckConstraint("CK_TreinosSeriesRealizadas_CargaKg", "\"CargaKg\" IS NULL OR \"CargaKg\" BETWEEN 0 AND 1000"));

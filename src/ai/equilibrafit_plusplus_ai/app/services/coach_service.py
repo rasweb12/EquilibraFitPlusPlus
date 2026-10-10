@@ -17,7 +17,7 @@ class CoachService:
         self._safety = SafetyService()
 
     async def reply(self, request: CoachMessageRequest) -> CoachMessageResponse:
-        """Reply to a coach message using OpenAI or deterministic fallback."""
+        """Reply using the selected provider or a safe deterministic fallback."""
         guidance = "\n".join(retrieve_guidance(request.mensagem))
         user_prompt = (
             f"Mensagem do usuário: {request.mensagem}\n"
@@ -29,6 +29,7 @@ class CoachService:
             feature="coach",
             system_prompt=COACH_SYSTEM_PROMPT,
             user_prompt=user_prompt,
+            provider=request.provider,
         )
         content = result.payload
         fallback_used = result.fallback_used
@@ -60,7 +61,7 @@ class CoachService:
                 "e procure um profissional se houver dor ou limitação importante."
             )
 
-        if _normalize("refeição") in normalized or "comi" in normalized:
+        if "refeic" in normalized or "comi" in normalized:
             return (
                 f"{context_summary} Sem problemas. Uma refeição não define sua evolução. Podemos ajustar as próximas escolhas "
                 "com leveza e manter o foco no conjunto da semana."

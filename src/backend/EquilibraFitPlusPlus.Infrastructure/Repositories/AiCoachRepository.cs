@@ -29,6 +29,12 @@ public sealed class AiCoachRepository : IAiCoachRepository
     }
 
     /// <inheritdoc />
+    public void AdicionarMensagem(ChatMessage message)
+    {
+        _dbContext.ChatMessages.Add(message);
+    }
+
+    /// <inheritdoc />
     public Task<ChatSession?> ObterSessaoAsync(Guid tenantId, Guid usuarioId, Guid sessaoId, CancellationToken cancellationToken)
     {
         return QuerySessions()

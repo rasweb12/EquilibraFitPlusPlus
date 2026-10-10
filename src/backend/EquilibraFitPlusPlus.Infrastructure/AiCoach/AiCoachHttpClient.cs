@@ -46,7 +46,8 @@ public sealed class AiCoachHttpClient : IAiCoachClient
             request.Mensagem,
             request.SystemPromptVersion,
             request.ContextoJson,
-            _options.Model);
+            request.Provider is null ? _options.Model : null,
+            request.Provider);
 
         return PostAsync<AiCoachHttpRequest, AiCoachHttpResponse, AiCoachClientReply>(
             _options.EndpointPath,
@@ -60,7 +61,7 @@ public sealed class AiCoachHttpClient : IAiCoachClient
                 }
 
                 string model = response?.Modelo ?? response?.Model ?? _options.Model;
-                return Result<AiCoachClientReply>.Success(new AiCoachClientReply(content.Trim(), model));
+                return Result<AiCoachClientReply>.Success(new AiCoachClientReply(content.Trim(), model, response!.FallbackUsed));
             },
             "AI Coach",
             cancellationToken);
@@ -423,13 +424,15 @@ public sealed class AiCoachHttpClient : IAiCoachClient
         [property: JsonPropertyName("mensagem")] string Mensagem,
         [property: JsonPropertyName("system_prompt_version")] string SystemPromptVersion,
         [property: JsonPropertyName("contexto_json")] string ContextoJson,
-        [property: JsonPropertyName("model")] string Model);
+        [property: JsonPropertyName("model")] string? Model,
+        [property: JsonPropertyName("provider")] string? Provider);
 
     private sealed record AiCoachHttpResponse(
         [property: JsonPropertyName("conteudo")] string? Conteudo,
         [property: JsonPropertyName("modelo")] string? Modelo,
         [property: JsonPropertyName("content")] string? Content,
-        [property: JsonPropertyName("model")] string? Model);
+        [property: JsonPropertyName("model")] string? Model,
+        [property: JsonPropertyName("fallback_used")] bool FallbackUsed = false);
 
     private sealed record AiMealRecognitionHttpRequest(
         [property: JsonPropertyName("image_base64")] string ImageBase64,

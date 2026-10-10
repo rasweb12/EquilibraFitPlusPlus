@@ -23,6 +23,8 @@ class _CoachPageState extends ConsumerState<CoachPage> {
   String? _sessionId;
   String? _reply;
   String? _notice;
+  var _provider = 'openai';
+  var _fallbackUsed = false;
   var _isLoading = false;
 
   @override
@@ -61,7 +63,7 @@ class _CoachPageState extends ConsumerState<CoachPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Resposta',
+                        _fallbackUsed ? 'Resposta de apoio local' : 'Resposta',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: AppTokens.space8),
@@ -78,6 +80,19 @@ class _CoachPageState extends ConsumerState<CoachPage> {
                 ),
               ),
             ],
+            const SizedBox(height: AppTokens.space16),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'openai', label: Text('OpenAI')),
+                ButtonSegment(value: 'gemini', label: Text('Gemini')),
+              ],
+              selected: {_provider},
+              onSelectionChanged: _isLoading
+                  ? null
+                  : (selection) {
+                      setState(() => _provider = selection.single);
+                    },
+            ),
             const SizedBox(height: AppTokens.space16),
             EfTextField(
               label: 'Mensagem',
@@ -118,16 +133,19 @@ class _CoachPageState extends ConsumerState<CoachPage> {
       final response = await ref.read(coachRepositoryProvider).sendMessage(
             message: _messageController.text.trim(),
             sessionId: _sessionId,
+            provider: _provider,
           );
 
+      if (!mounted) return;
       setState(() {
         _sessionId = response.sessionId;
         _reply = response.content;
         _notice = response.healthNotice;
+        _fallbackUsed = response.fallbackUsed;
         _messageController.clear();
       });
     } on AppFailure catch (failure) {
-      _showMessage(failure.message);
+      if (mounted) _showMessage(failure.message);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

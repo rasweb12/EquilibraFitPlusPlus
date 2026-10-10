@@ -9,7 +9,9 @@ Nenhum commit/push automatico.
 .NET 10 Clean Architecture / EF Core 10 Npgsql / SQLite dev-test.
 Supabase PostgreSQL e Auth, esquema app e RLS.
 Flutter SQLite offline / outbox / sync / 409 / pending AI.
-Blazor Admin -> API; API -> FastAPI -> OpenAI.
+Blazor Admin -> API; API -> FastAPI -> OpenAI/Gemini.
+Coach com escolha de provedor por mensagem; demais funcionalidades Gemini.
+Fallback automatico entre provedores permanece desabilitado.
 Google Play Billing -> API -> subscriptionsv2 -> entitlement.
 Render Docker tres servicos; Redis opcional; Azure futuro.
 

@@ -7,4 +7,5 @@ public sealed record CoachReplyResponse(
     Guid SessaoId,
     CoachMessageResponse MensagemUsuario,
     CoachMessageResponse MensagemCoach,
-    string AvisoSaude);
+    string AvisoSaude,
+    bool FallbackUsed = false);

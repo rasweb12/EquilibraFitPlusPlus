@@ -29,7 +29,7 @@ try
             .WriteTo.Console(new Serilog.Formatting.Json.JsonFormatter());
     });
 
-    builder.Services.AddApplication();
+    builder.Services.AddApplication(builder.Configuration["MediatR:LicenseKey"]);
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddControllers();
     string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];

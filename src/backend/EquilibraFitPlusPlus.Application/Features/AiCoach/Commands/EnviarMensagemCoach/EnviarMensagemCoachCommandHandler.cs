@@ -77,7 +77,7 @@ public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMe
         string contextJson = JsonSerializer.Serialize(CreateSafeContext(context, instructions), JsonOptions);
 
         Result<AiCoachClientReply> coachReply = await _aiCoachClient.EnviarAsync(
-            new AiCoachClientRequest(command.TenantId, command.UsuarioId, session.Id, command.Request.Mensagem.Trim(), SystemPromptVersion, contextJson),
+            new AiCoachClientRequest(command.TenantId, command.UsuarioId, session.Id, command.Request.Mensagem.Trim(), SystemPromptVersion, contextJson, command.Request.Provedor),
             cancellationToken);
 
         if (coachReply.IsFailure && coachReply.Errors.Any(AiServiceErrors.IsInfrastructureError))
@@ -98,6 +98,7 @@ public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMe
         var userMessage = new ChatMessage
         {
             TenantId = command.TenantId,
+            ChatSessionId = session.Id,
             Role = "user",
             Conteudo = command.Request.Mensagem.Trim()
         };
@@ -105,6 +106,7 @@ public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMe
         var assistantMessage = new ChatMessage
         {
             TenantId = command.TenantId,
+            ChatSessionId = session.Id,
             Role = "assistant",
             Conteudo = reply.Conteudo.Trim(),
             ModeloIa = reply.Modelo
@@ -112,20 +114,27 @@ public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMe
 
         session.Mensagens.Add(userMessage);
         session.Mensagens.Add(assistantMessage);
-        await UpsertExplicitMemoriesAsync(command.TenantId, command.UsuarioId, command.Request.Mensagem, cancellationToken);
 
         if (command.Request.SessaoId is null)
         {
             _aiCoachRepository.AdicionarSessao(session);
         }
+        else
+        {
+            // Client-assigned message IDs must be inserted, not inferred as existing rows.
+            _aiCoachRepository.AdicionarMensagem(userMessage);
+            _aiCoachRepository.AdicionarMensagem(assistantMessage);
+        }
 
+        await UpsertExplicitMemoriesAsync(command.TenantId, command.UsuarioId, command.Request.Mensagem, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<CoachReplyResponse>.Success(new CoachReplyResponse(
             session.Id,
             CoachSessionMapper.MapMessage(userMessage),
             CoachSessionMapper.MapMessage(assistantMessage),
-            HealthDisclaimer));
+            HealthDisclaimer,
+            reply.FallbackUsed));
     }
 
     private static ChatSession CreateSession(Guid tenantId, Guid usuarioId, string firstMessage)
@@ -178,7 +187,7 @@ public sealed class EnviarMensagemCoachCommandHandler : IRequestHandler<EnviarMe
             action,
             HealthDisclaimer);
 
-        return new AiCoachClientReply(content, "equilibrafit-coach-hybrid-v1");
+        return new AiCoachClientReply(content, "equilibrafit-coach-hybrid-v1", FallbackUsed: true);
     }
 
     private static string CreateWeightPart(CoachAiContext context)

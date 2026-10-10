@@ -14,11 +14,15 @@ public static class DependencyInjection
     /// <summary>
     /// Adds application services to the container.
     /// </summary>
-    public static IServiceCollection AddApplication(this IServiceCollection services)
+    public static IServiceCollection AddApplication(this IServiceCollection services, string? mediatrLicenseKey = null)
     {
         Assembly assembly = typeof(DependencyInjection).Assembly;
 
-        services.AddMediatR(configuration => configuration.RegisterServicesFromAssembly(assembly));
+        services.AddMediatR(configuration =>
+        {
+            configuration.RegisterServicesFromAssembly(assembly);
+            configuration.LicenseKey = string.IsNullOrWhiteSpace(mediatrLicenseKey) ? null : mediatrLicenseKey;
+        });
         services.AddValidatorsFromAssembly(assembly);
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 

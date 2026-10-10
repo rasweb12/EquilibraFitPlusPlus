@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from app.core.config import AiProviderName
+
 
 class CoachMessageRequest(BaseModel):
     """Request sent by the backend to the AI Coach."""
@@ -11,6 +13,7 @@ class CoachMessageRequest(BaseModel):
     system_prompt_version: str = "coach-v1"
     contexto_json: str | None = None
     model: str | None = None
+    provider: AiProviderName | None = None
 
 
 class CoachMessageResponse(BaseModel):

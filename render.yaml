@@ -55,7 +55,7 @@ services:
         value: openai
 
       - key: EQUILIBRAFIT_AI_WORKOUTS_PROVIDER
-        value: openai
+        value: gemini
 
       - key: EQUILIBRAFIT_AI_PLANS_PROVIDER
         value: gemini

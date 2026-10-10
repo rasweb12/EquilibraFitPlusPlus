@@ -77,8 +77,11 @@ Nao reutilize o Blueprint/repo/banco original.
 Preencha secrets da API SUPABASE_DB_CONNECTION_STRING, SUPABASE_URL e
 SUPABASE_PUBLISHABLE_KEY. API recebe AI URL e chave interna por fromService;
 Admin recebe API URL por fromService/RENDER_EXTERNAL_URL.
-AI gera sua chave interna; configure EQUILIBRAFIT_AI_OPENAI_API_KEY somente
-no servico AI. Sem OpenAI, fallback seguro continua disponivel.
+AI gera sua chave interna; configure EQUILIBRAFIT_AI_OPENAI_API_KEY e
+EQUILIBRAFIT_AI_GEMINI_API_KEY somente no servico AI. Coach permite escolher
+OpenAI/Gemini; as demais funcionalidades usam Gemini. Sem um provedor disponivel,
+fallback seguro continua disponivel. Veja [roteamento de IA](ai-provider-routing.md)
+para as variaveis e a ordem de publicacao Python -> API -> APK.
 
 ## Runtime
 
@@ -95,7 +98,7 @@ Para outra hospedagem configure KnownProxies/KnownNetworks explicitamente.
 
 Health API /health e /health/ready, Admin /health, AI /health.
 Ready testa conexao/banco com todas as migrations aplicadas; health AI nao
-certifica acesso OpenAI. Swagger API e docs AI sao desligados em producao.
+certifica acesso OpenAI/Gemini. Swagger API e docs AI sao desligados em producao.
 
 ## Billing E Bootstrap
 

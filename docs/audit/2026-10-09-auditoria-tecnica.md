@@ -3,7 +3,7 @@ Data: 2026-10-09. Repositorio: rasweb12/EquilibraFitPlusPlus. Branch: main.
 Base auditada: cff44d0c78ff5153fe3f5de71a4d6ff77bd2adc3 (IA4.1).
 Diretorio confirmado: D:/Curso/APP/EquilibraFit++. Estado inicial: limpo.
 
-> Snapshot da primeira etapa da auditoria. Para correcoes posteriores do incidente 502, testes finais (303 .NET / 65 Python / 60 Flutter), evidencias do Render e hash do APK Debug mais recente, consultar [relatorio do incidente](D:/Curso/APP/EquilibraFit++/docs/audit/2026-10-09-incidente-ai-502.md). O APK Debug foi reconstruido; o hash registrado abaixo pertence ao build anterior.
+> Snapshot da primeira etapa da auditoria. Para correcoes posteriores do incidente 502, testes finais (312 .NET / 65 Python / 60 Flutter), evidencias do Render, fechamento dos filtros/licenca e hash do APK Debug mais recente, consultar [relatorio do incidente](D:/Curso/APP/EquilibraFit++/docs/audit/2026-10-09-incidente-ai-502.md), especialmente a secao 9. O APK Debug foi reconstruido; o hash registrado abaixo pertence ao build anterior.
 
 ## A. Resumo executivo
 

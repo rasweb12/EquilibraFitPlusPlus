@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.config import Settings
+from app.core.config import AiProviderName, Settings
 from app.providers.gemini_provider import GeminiProvider
 from app.providers.openai_provider import OpenAiTextProvider
 
@@ -29,21 +29,28 @@ class AiProviderRouter:
             "gemini": GeminiProvider(settings),
         }
 
-    async def _execute(self, *, feature: str, method: str, **kwargs: Any) -> AiProviderResult:
+    async def _execute(self, *, feature: str, method: str,
+                       provider: AiProviderName | None = None, **kwargs: Any) -> AiProviderResult:
         policy = self._settings.provider_for_feature(feature)
-        candidates = [policy.primary] + ([policy.fallback] if policy.fallback else [])
+        if provider is not None:
+            if feature != "coach":
+                raise ValueError("Provider selection is only supported for Coach.")
+            # An explicit choice must not silently switch to another provider.
+            candidates = [provider]
+        else:
+            candidates = [policy.primary] + ([policy.fallback] if policy.fallback else [])
         error_type = "unconfigured"
         # The deadline covers all attempts, not a new full timeout per provider.
         try:
             async with asyncio.timeout(self._settings.request_timeout_seconds):
                 for index, name in enumerate(candidates):
-                    provider = self._providers[name]
-                    if not provider.is_configured:
+                    client = self._providers[name]
+                    if not client.is_configured:
                         error_type = "unconfigured"
                         continue
                     model = self._settings.model_for_provider(name)
                     try:
-                        payload = await getattr(provider, method)(model=model, **kwargs)
+                        payload = await getattr(client, method)(model=model, **kwargs)
                     except Exception as exc:  # noqa: BLE001 - SDK failures must degrade safely
                         error_type = type(exc).__name__
                         logger.warning("AI provider failed: feature=%s provider=%s error=%s",
@@ -62,9 +69,11 @@ class AiProviderRouter:
         return AiProviderResult(error_type=error_type)
 
     async def complete_result(self, *, feature: str, system_prompt: str,
-                              user_prompt: str) -> AiProviderResult:
+                              user_prompt: str,
+                              provider: AiProviderName | None = None) -> AiProviderResult:
         return await self._execute(feature=feature, method="complete",
-                                   system_prompt=system_prompt, user_prompt=user_prompt)
+                                   system_prompt=system_prompt, user_prompt=user_prompt,
+                                   provider=provider)
 
     async def complete_json_result(self, *, feature: str, system_prompt: str,
                                    user_prompt: str) -> AiProviderResult:

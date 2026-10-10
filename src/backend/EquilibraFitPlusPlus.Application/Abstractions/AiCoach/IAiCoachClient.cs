@@ -48,12 +48,13 @@ public sealed record AiCoachClientRequest(
     Guid SessaoId,
     string Mensagem,
     string SystemPromptVersion,
-    string ContextoJson);
+    string ContextoJson,
+    string? Provider = null);
 
 /// <summary>
 /// Reply returned by the external AI Coach service.
 /// </summary>
-public sealed record AiCoachClientReply(string Conteudo, string Modelo);
+public sealed record AiCoachClientReply(string Conteudo, string Modelo, bool FallbackUsed = false);
 
 /// <summary>
 /// Meal image recognition request sent to the AI service.

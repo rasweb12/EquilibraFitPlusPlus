@@ -54,6 +54,22 @@ def test_canonical_coach_chat_endpoint_uses_safe_fallback_without_openai_key() -
     assert "Sem problemas" in body["conteudo"]
 
 
+@pytest.mark.parametrize("provider", ["unknown", "", "OpenAI", "https://untrusted.test"])
+def test_coach_rejects_invalid_provider_before_processing(provider):
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/coach/chat", json={"mensagem": "Oi", "provider": provider})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("provider", ["openai", "gemini"])
+def test_coach_selected_provider_uses_safe_fallback_without_keys(provider):
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/coach/chat", json={"mensagem": "Como ajustar meu jantar?", "provider": provider})
+    assert response.status_code == 200
+    assert response.json()["fallback_used"]
+    assert response.json()["modelo"] == "equilibrafit-coach-rules-v1"
+
+
 def test_text_meal_estimation_endpoint_returns_hybrid_result_without_openai_key() -> None:
     get_settings.cache_clear()
     client = TestClient(create_app())

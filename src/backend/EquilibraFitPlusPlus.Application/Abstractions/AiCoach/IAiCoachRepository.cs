@@ -14,6 +14,11 @@ public interface IAiCoachRepository
     void AdicionarSessao(ChatSession session);
 
     /// <summary>
+    /// Adds a new message to an existing tracked session.
+    /// </summary>
+    void AdicionarMensagem(ChatMessage message);
+
+    /// <summary>
     /// Gets a chat session by owner and identifier.
     /// </summary>
     Task<ChatSession?> ObterSessaoAsync(Guid tenantId, Guid usuarioId, Guid sessaoId, CancellationToken cancellationToken);

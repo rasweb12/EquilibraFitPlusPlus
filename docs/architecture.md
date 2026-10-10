@@ -18,7 +18,10 @@ O original nao foi alterado para viabilizar esta arquitetura.
 | API | Autorizacao, contexto usuario/tenant, rate limiting, idempotencia, LGPD |
 | Mobile | UI existente, sessao persistente, SQLite, outbox e sync |
 | Admin | Blazor Server, roles obtidas da API, auditoria e operacao |
-| AI | Contexto por finalidade, memoria/RAG, timeout, fallback e OpenAI |
+| AI | Contexto por finalidade, memoria/RAG, timeout, fallback seguro, OpenAI e Gemini |
+
+Coach permite escolher OpenAI/Gemini por mensagem; as demais funcionalidades
+usam Gemini. Veja [roteamento de IA](ai-provider-routing.md).
 
 ## Dados E Auth
 

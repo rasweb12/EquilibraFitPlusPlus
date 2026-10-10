@@ -42,8 +42,13 @@ class CoachRepository {
   Future<CoachReply> sendMessage({
     required String message,
     String? sessionId,
+    String provider = 'openai',
   }) async {
-    final body = <String, Object?>{'sessaoId': sessionId, 'mensagem': message};
+    final body = <String, Object?>{
+      'sessaoId': sessionId,
+      'mensagem': message,
+      'provedor': provider,
+    };
     final Map<String, Object?> json;
 
     try {
@@ -63,11 +68,19 @@ class CoachRepository {
     final coachMessage = jsonObject(
       json['mensagemCoach'] ?? json['MensagemCoach'],
     );
+    final fallback = json['fallbackUsed'] ?? json['FallbackUsed'];
+    final model =
+        jsonString(coachMessage['modeloIa'] ?? coachMessage['ModeloIa']);
 
     return CoachReply(
       sessionId: jsonString(json['sessaoId'] ?? json['SessaoId']),
       content: jsonString(coachMessage['conteudo'] ?? coachMessage['Conteudo']),
       healthNotice: jsonString(json['avisoSaude'] ?? json['AvisoSaude']),
+      // Older API deployments expose the fallback model but not the flag.
+      fallbackUsed: fallback is bool
+          ? fallback
+          : model.startsWith('equilibrafit-coach-rules-') ||
+              model.startsWith('equilibrafit-coach-hybrid-'),
     );
   }
 

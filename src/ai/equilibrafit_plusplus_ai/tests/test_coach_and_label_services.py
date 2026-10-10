@@ -1,14 +1,49 @@
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.core.config import Settings
+from app.providers.ai_provider_router import AiProviderResult
 from app.schemas.coach import CoachMessageRequest
 from app.schemas.labels import LabelRecognizeRequest
 from app.schemas.meals import MealRecognizeRequest, MealTextEstimateRequest
 from app.services.coach_service import CoachService
 from app.services.label_service import LabelRecognitionService
 from app.services.meal_recognition_service import MealRecognitionService
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider,model", [("openai", "gpt-4.1-mini"), ("gemini", "gemini-2.5-flash")])
+async def test_coach_forwards_selected_provider_and_keeps_actual_model(provider, model):
+    service = CoachService(Settings(_env_file=None))
+    operation = AsyncMock(return_value=AiProviderResult("Podemos seguir com calma.", provider, model))
+    service._provider.complete_result = operation
+    response = await service.reply(CoachMessageRequest(mensagem="Como adaptar minha rotina?", provider=provider))
+    assert operation.await_args.kwargs["provider"] == provider
+    assert response.modelo == model
+    assert not response.fallback_used
+
+
+@pytest.mark.asyncio
+async def test_selected_gemini_still_enforces_clinical_safety():
+    service = CoachService(Settings(_env_file=None))
+    service._provider.complete_result = AsyncMock(return_value=AiProviderResult(
+        "Pare de tomar seu medicamento.", "gemini", "gemini-2.5-flash"))
+    response = await service.reply(CoachMessageRequest(mensagem="Como adaptar minha rotina?", provider="gemini"))
+    assert response.fallback_used
+    assert response.modelo == "equilibrafit-coach-rules-v1"
+    assert response.conteudo != "Pare de tomar seu medicamento."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["Como adaptar minhas refeições?", "Como adaptar minha refeição?", "Como adaptar minhas refeicoes?"])
+async def test_coach_meal_fallback_handles_singular_and_plural(message: str) -> None:
+    service = CoachService(Settings(openai_api_key=None, gemini_api_key=None, _env_file=None))
+    response = await service.reply(CoachMessageRequest(mensagem=message))
+    assert response.fallback_used
+    assert response.modelo == "equilibrafit-coach-rules-v1"
+    assert "próximas escolhas" in response.conteudo
 
 
 @pytest.mark.asyncio

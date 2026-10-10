@@ -8,6 +8,22 @@ namespace EquilibraFitPlusPlus.Application.UnitTests.AiCoach;
 /// </summary>
 public sealed class EnviarMensagemCoachCommandValidatorTests
 {
+    /// <summary>Only the supported providers and the legacy default are accepted.</summary>
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("openai", true)]
+    [InlineData("gemini", true)]
+    [InlineData("", false)]
+    [InlineData("OpenAI", false)]
+    [InlineData("unknown", false)]
+    [InlineData("https://untrusted.test", false)]
+    public void Validate_ShouldRestrictProviderSelection(string? provider, bool expected)
+    {
+        var request = new EnviarMensagemCoachRequest(null, "Como adaptar meu treino?", provider);
+        var result = new EnviarMensagemCoachCommandValidator().Validate(new EnviarMensagemCoachCommand(Guid.NewGuid(), Guid.NewGuid(), request));
+        Assert.Equal(expected, result.IsValid);
+    }
+
     /// <summary>
     /// Ensures a friendly, bounded user message is accepted.
     /// </summary>

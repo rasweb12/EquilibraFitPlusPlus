@@ -5,6 +5,77 @@ import 'package:equilibrafit_plusplus_app/features/coach/data/coach_repository.d
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  for (final provider in ['openai', 'gemini']) {
+    test('sends only the chosen Coach provider: $provider', () async {
+      final dio = Dio();
+      RequestOptions? captured;
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            captured = options;
+            handler.resolve(
+              Response<Map<String, Object?>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'sessaoId': 'session-1',
+                  'mensagemCoach': {'conteudo': 'Resposta'},
+                },
+              ),
+            );
+          },
+        ),
+      );
+      await CoachRepository(ApiClient(dio)).sendMessage(
+        message: 'Como adaptar minha rotina?',
+        sessionId: 'session-1',
+        provider: provider,
+      );
+      expect(captured?.data, {
+        'sessaoId': 'session-1',
+        'mensagem': 'Como adaptar minha rotina?',
+        'provedor': provider,
+      });
+    });
+  }
+
+  for (final fixture in [
+    (flag: true, model: 'equilibrafit-coach-rules-v1', expected: true),
+    (flag: false, model: 'gpt-4.1-mini', expected: false),
+    (flag: null, model: 'equilibrafit-coach-rules-v1', expected: true),
+    (flag: null, model: 'gpt-4.1-mini', expected: false),
+  ]) {
+    test('preserves coach fallback status: $fixture', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            handler.resolve(
+              Response<Map<String, Object?>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'sessaoId': 'session-1',
+                  'mensagemCoach': {
+                    'conteudo': 'Resposta',
+                    'modeloIa': fixture.model,
+                  },
+                  'avisoSaude': 'Aviso de teste',
+                  if (fixture.flag != null) 'fallbackUsed': fixture.flag,
+                },
+              ),
+            );
+          },
+        ),
+      );
+      final reply =
+          await CoachRepository(ApiClient(dio)).sendMessage(message: 'Teste');
+      expect(reply.fallbackUsed, fixture.expected);
+      expect(reply.content, 'Resposta');
+      expect(reply.healthNotice, 'Aviso de teste');
+    });
+  }
+
   test('queues one coach request when device is offline', () async {
     final dio = Dio();
     dio.interceptors.add(
@@ -28,7 +99,10 @@ void main() {
       usuarioId: 'user-1',
     );
 
-    final reply = await repository.sendMessage(message: 'Como treino hoje?');
+    final reply = await repository.sendMessage(
+      message: 'Como treino hoje?',
+      provider: 'gemini',
+    );
 
     expect(reply.content, contains('Salvei sua pergunta'));
     expect(pendingStore.calls, 1);
@@ -36,6 +110,11 @@ void main() {
     expect(pendingStore.usuarioId, 'user-1');
     expect(pendingStore.type, 'coach.message');
     expect(pendingStore.payload?['path'], '/api/v1/ia/coach/mensagens');
+    expect(pendingStore.payload?['body'], {
+      'sessaoId': null,
+      'mensagem': 'Como treino hoje?',
+      'provedor': 'gemini',
+    });
   });
 }
 

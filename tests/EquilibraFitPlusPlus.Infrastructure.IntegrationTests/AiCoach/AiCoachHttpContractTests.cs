@@ -11,6 +11,46 @@ namespace EquilibraFitPlusPlus.Infrastructure.IntegrationTests.AiCoach;
 
 public sealed class AiCoachHttpContractTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("openai")]
+    [InlineData("gemini")]
+    public async Task CoachRequest_ShouldForwardProviderWithoutSendingWrongModel(string? provider)
+    {
+        var handler = new FakeHandler("""{"conteudo":"Resposta segura","modelo":"actual-model"}""");
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://ai.example.test") };
+        var result = await CreateClient(http).EnviarAsync(new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "test", "v1", "{}", provider), default);
+        Assert.True(result.IsSuccess);
+        using var body = JsonDocument.Parse(handler.Body!);
+        if (provider is null)
+        {
+            Assert.False(body.RootElement.TryGetProperty("provider", out _));
+            Assert.True(body.RootElement.TryGetProperty("model", out _));
+        }
+        else
+        {
+            Assert.Equal(provider, body.RootElement.GetProperty("provider").GetString());
+            Assert.False(body.RootElement.TryGetProperty("model", out _));
+        }
+        Assert.Equal("actual-model", result.Value!.Modelo);
+    }
+
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData(null, false)]
+    public async Task CoachReply_ShouldPreserveFallbackMetadata(string? flag, bool expected)
+    {
+        string metadata = flag is null ? "" : $",\"fallback_used\":{flag}";
+        using var http = new HttpClient(new FakeHandler(
+            $"{{\"conteudo\":\"Resposta de teste\",\"modelo\":\"test-model\"{metadata}}}"))
+            { BaseAddress = new Uri("https://ai.example.test") };
+        var result = await CreateClient(http).EnviarAsync(new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "test", "v1", "{}"), default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, result.Value!.FallbackUsed);
+        Assert.Equal("test-model", result.Value.Modelo);
+    }
+
     [Fact]
     public async Task LabelContext_ShouldNotBeSerializedAsExtractedText()
     {

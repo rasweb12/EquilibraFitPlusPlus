@@ -18,7 +18,7 @@ def fake_provider(payload=None, *, configured=True, exception=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("feature,provider", [
-    ("coach", "openai"), ("workouts", "openai"), ("plans", "gemini"),
+    ("coach", "openai"), ("workouts", "gemini"), ("plans", "gemini"),
     ("meals", "gemini"), ("meal_text", "gemini"), ("labels", "gemini"),
 ])
 async def test_each_feature_uses_its_configured_provider(feature, provider):
@@ -34,6 +34,74 @@ async def test_each_feature_uses_its_configured_provider(feature, provider):
         model=result.model, system_prompt="s", user_prompt="u")
     other = "gemini" if provider == "openai" else "openai"
     router._providers[other].complete_json.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "gemini"])
+async def test_coach_explicit_choice_uses_only_selected_provider(provider):
+    router = AiProviderRouter(Settings(coach_provider="openai", fallback_enabled=False))
+    router._providers = {name: fake_provider("Resposta segura") for name in ("openai", "gemini")}
+    result = await router.complete_result(feature="coach", provider=provider,
+                                          system_prompt="s", user_prompt="u")
+    assert result.provider == provider
+    assert result.model == router._settings.model_for_provider(provider)
+    assert not result.fallback_used
+    router._providers[provider].complete.assert_awaited_once_with(
+        model=result.model, system_prompt="s", user_prompt="u")
+    other = "gemini" if provider == "openai" else "openai"
+    router._providers[other].complete.assert_not_awaited()
+    assert router._settings.coach_provider == "openai"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "gemini"])
+@pytest.mark.parametrize("failure", ["unconfigured", "invalid_response", "timeout"])
+async def test_explicit_choice_never_switches_provider_on_failure(provider, failure):
+    other = "gemini" if provider == "openai" else "openai"
+    router = AiProviderRouter(Settings(fallback_enabled=True, fallback_provider=other))
+    router._providers = {
+        provider: fake_provider(configured=failure != "unconfigured"),
+        other: fake_provider("Resposta do outro provedor"),
+    }
+    if failure == "timeout":
+        router._providers[provider].complete.side_effect = TimeoutError()
+    result = await router.complete_result(feature="coach", provider=provider,
+                                          system_prompt="s", user_prompt="u")
+    assert result.payload is None
+    assert result.error_type == ("TimeoutError" if failure == "timeout" else failure)
+    router._providers[other].complete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_coach_choices_do_not_change_default_or_each_other():
+    router = AiProviderRouter(Settings(coach_provider="openai"))
+    async def delayed(**kwargs):
+        await asyncio.sleep(0.01)
+        return kwargs["model"]
+    router._providers = {name: fake_provider() for name in ("openai", "gemini")}
+    for client in router._providers.values():
+        client.complete.side_effect = delayed
+    selections = ["openai", "gemini"] * 10
+    results = await asyncio.gather(*[
+        router.complete_result(feature="coach", provider=name, system_prompt="s", user_prompt="u")
+        for name in selections
+    ])
+    assert [result.provider for result in results] == selections
+    assert [result.model for result in results] == [router._settings.model_for_provider(name) for name in selections]
+    assert router._settings.coach_provider == "openai"
+
+
+@pytest.mark.asyncio
+async def test_non_coach_features_cannot_override_provider():
+    router = AiProviderRouter(Settings())
+    with pytest.raises(ValueError, match="only supported for Coach"):
+        await router.complete_result(feature="workouts", provider="openai", system_prompt="s", user_prompt="u")
+
+
+@pytest.mark.parametrize("feature", ["workouts", "plans", "meals", "meal_text", "labels"])
+def test_non_coach_defaults_use_gemini(feature, monkeypatch):
+    monkeypatch.delenv("EQUILIBRAFIT_AI_" + feature.upper() + "_PROVIDER", raising=False)
+    assert Settings(_env_file=None).provider_for_feature(feature).primary == "gemini"
 
 
 @pytest.mark.asyncio
@@ -89,7 +157,7 @@ async def test_concurrent_calls_keep_their_own_metadata():
 
 @pytest.mark.asyncio
 async def test_deadline_returns_safe_failure_without_automatic_fallback():
-    settings = Settings()
+    settings = Settings(workouts_provider="openai")
     settings.request_timeout_seconds = 0.01
     router = AiProviderRouter(settings)
     async def slow(**kwargs):

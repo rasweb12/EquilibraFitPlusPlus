@@ -79,15 +79,14 @@ class Settings(BaseSettings):
     fallback_provider: AiProviderName | None = None
 
     # Provider selection by feature.
-    # Defaults preserve OpenAI behavior unless
-    # a feature is explicitly configured otherwise.
+    # Coach defaults to OpenAI; other features use Gemini.
 
     coach_provider: AiProviderName = "openai"
-    workouts_provider: AiProviderName = "openai"
-    plans_provider: AiProviderName = "openai"
-    meals_provider: AiProviderName = "openai"
-    meal_text_provider: AiProviderName = "openai"
-    labels_provider: AiProviderName = "openai"
+    workouts_provider: AiProviderName = "gemini"
+    plans_provider: AiProviderName = "gemini"
+    meals_provider: AiProviderName = "gemini"
+    meal_text_provider: AiProviderName = "gemini"
+    labels_provider: AiProviderName = "gemini"
 
     # --------------------------------------------------
     # Request configuration

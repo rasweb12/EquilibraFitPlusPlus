@@ -194,6 +194,43 @@ public sealed class SupabaseAuthorizationTests
         Assert.Empty(await db.Set<AnaliseRefeicaoImagem>().ToListAsync());
     }
 
+    /// <summary>Authenticated Coach requests keep the selected provider and returned model.</summary>
+    [Theory]
+    [InlineData("openai", "gpt-4.1-mini")]
+    [InlineData("gemini", "gemini-2.5-flash")]
+    public async Task Coach_ShouldForwardAuthenticatedProviderChoice(string provider, string model)
+    {
+        using var factory = new ApiFactory();
+        factory.AiProvider.Status = HttpStatusCode.OK;
+        factory.AiProvider.Body = System.Text.Json.JsonSerializer.Serialize(new { conteudo = "Podemos seguir com calma.", modelo = model });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token());
+        using var response = await client.PostAsJsonAsync("/api/v1/ia/coach/mensagens", new { mensagem = "Como ajustar a rotina?", provedor = provider });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(provider, factory.AiProvider.RequestProvider);
+        Assert.Equal(1, factory.AiProvider.Calls);
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(model, body.RootElement.GetProperty("mensagemCoach").GetProperty("modeloIa").GetString());
+    }
+
+    /// <summary>Invalid selections are rejected before any upstream call or conversation write.</summary>
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("")]
+    [InlineData("OpenAI")]
+    [InlineData("https://untrusted.test")]
+    public async Task Coach_ShouldRejectInvalidProviderBeforeCallingAi(string provider)
+    {
+        using var factory = new ApiFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token());
+        using var response = await client.PostAsJsonAsync("/api/v1/ia/coach/mensagens", new { mensagem = "Como ajustar a rotina?", provedor = provider });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, factory.AiProvider.Calls);
+        using var scope = factory.Services.CreateScope();
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<EquilibraFitPlusPlusDbContext>().Set<ChatSession>().ToListAsync());
+    }
+
     [Fact]
     public async Task Coach_ShouldPreserveClinicalGuardAndSuccessfulRulesFallback()
     {
@@ -303,10 +340,13 @@ public sealed class SupabaseAuthorizationTests
         internal bool Delay { get; set; }
         internal int Calls { get; private set; }
         internal string? Correlation { get; private set; }
+        internal string? RequestProvider { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
             Correlation = request.Headers.GetValues("X-Correlation-ID").Single();
+            using var payload = System.Text.Json.JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            RequestProvider = payload.RootElement.TryGetProperty("provider", out var provider) ? provider.GetString() : null;
             if (Delay) await Task.Delay(System.Threading.Timeout.Infinite, ct);
             var response = new HttpResponseMessage(Status)
                 { Content = new StringContent(Body, System.Text.Encoding.UTF8, Status == HttpStatusCode.OK ? "application/json" : "text/html") };
