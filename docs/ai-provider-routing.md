@@ -33,9 +33,16 @@ EQUILIBRAFIT_AI_MEALS_PROVIDER=gemini
 EQUILIBRAFIT_AI_MEAL_TEXT_PROVIDER=gemini
 EQUILIBRAFIT_AI_LABELS_PROVIDER=gemini
 EQUILIBRAFIT_AI_OPENAI_MODEL=gpt-4.1-mini
-EQUILIBRAFIT_AI_GEMINI_MODEL=gemini-2.5-flash
+EQUILIBRAFIT_AI_GEMINI_MODEL=gemini-3.5-flash-lite
 EQUILIBRAFIT_AI_FALLBACK_ENABLED=false
 ```
+
+O modelo 2.5 tem acesso limitado pelo Google a projetos com uso anterior. Para
+projetos novos, a configuracao usa `gemini-3.5-flash-lite`, modelo estavel com
+entrada multimodal e saida estruturada. Um HTTP 404 do provedor e registrado
+como `model_not_found`, com o status e o modelo, sem corpo, prompt ou segredo.
+Erros de autenticacao, permissao, limite, transporte e timeout tambem possuem
+categorias seguras. Nenhum deles ativa troca automatica de provedor.
 
 As chaves OpenAI/Gemini e a chave interna da IA permanecem somente no ambiente
 confiavel do backend/Python. Nao existem chaves de provedor no seletor Flutter.

@@ -197,7 +197,7 @@ public sealed class SupabaseAuthorizationTests
     /// <summary>Authenticated Coach requests keep the selected provider and returned model.</summary>
     [Theory]
     [InlineData("openai", "gpt-4.1-mini")]
-    [InlineData("gemini", "gemini-2.5-flash")]
+    [InlineData("gemini", "gemini-3.5-flash-lite")]
     public async Task Coach_ShouldForwardAuthenticatedProviderChoice(string provider, string model)
     {
         using var factory = new ApiFactory();

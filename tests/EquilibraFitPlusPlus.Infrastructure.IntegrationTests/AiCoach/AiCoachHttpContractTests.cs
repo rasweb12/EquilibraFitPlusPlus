@@ -54,7 +54,7 @@ public sealed class AiCoachHttpContractTests
     [Fact]
     public async Task LabelContext_ShouldNotBeSerializedAsExtractedText()
     {
-        var handler = new FakeHandler("""{"calories":150,"confidence":90,"requires_user_review":true,"model":"gemini-2.5-flash","message":"review"}""");
+        var handler = new FakeHandler("""{"calories":150,"confidence":90,"requires_user_review":true,"model":"gemini-3.5-flash-lite","message":"review"}""");
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://ai.example.test") };
         var client = CreateClient(http);
         var result = await client.ReconhecerRotuloAsync(new("image-placeholder", null, "porcao de 30g"), default);
@@ -62,7 +62,7 @@ public sealed class AiCoachHttpContractTests
         using var payload = JsonDocument.Parse(handler.Body!);
         Assert.False(payload.RootElement.TryGetProperty("extracted_text", out _));
         Assert.Equal("porcao de 30g", payload.RootElement.GetProperty("label_context").GetString());
-        Assert.Equal("gemini-2.5-flash", result.Value!.Model);
+        Assert.Equal("gemini-3.5-flash-lite", result.Value!.Model);
     }
 
     [Theory]

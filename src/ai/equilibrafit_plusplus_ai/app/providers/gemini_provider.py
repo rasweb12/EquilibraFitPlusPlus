@@ -1,10 +1,12 @@
 
 import base64
+import binascii
 import json
 import logging
 import re
 
 from app.core.config import Settings
+from app.providers.provider_errors import AiProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,7 @@ class GeminiProvider:
         return getattr(
             self._settings,
             "gemini_model",
-            "gemini-2.5-flash",
+            "gemini-3.5-flash-lite",
         )
 
     async def complete(
@@ -81,11 +83,7 @@ class GeminiProvider:
             return content.strip() if content else None
 
         except Exception as exc:  # noqa: BLE001 - optional SDK failures must degrade safely
-            logger.warning(
-                "Gemini text request failed: %s",
-                type(exc).__name__,
-            )
-            return None
+            raise AiProviderError.from_exception(exc) from None
 
     async def complete_json(
         self,
@@ -116,11 +114,7 @@ class GeminiProvider:
             return self._parse_json(response.text)
 
         except Exception as exc:  # noqa: BLE001 - invalid provider responses use safe fallback
-            logger.warning(
-                "Gemini JSON request failed: %s",
-                type(exc).__name__,
-            )
-            return None
+            raise AiProviderError.from_exception(exc) from None
 
     async def analyze_image_json(
         self,
@@ -150,10 +144,13 @@ class GeminiProvider:
                 image_base64,
                 validate=True,
             )
+        except (binascii.Error, ValueError):
+            return None
 
-            if not image_data or len(image_data) > 10 * 1024 * 1024:
-                return None
+        if not image_data or len(image_data) > 10 * 1024 * 1024:
+            return None
 
+        try:
             image_part = self._types.Part.from_bytes(
                 data=image_data,
                 mime_type=mime_type,
@@ -178,11 +175,7 @@ class GeminiProvider:
             return self._parse_json(response.text)
 
         except Exception as exc:  # noqa: BLE001 - vision failures must require manual review
-            logger.warning(
-                "Gemini image request failed: %s",
-                type(exc).__name__,
-            )
-            return None
+            raise AiProviderError.from_exception(exc) from None
 
     @staticmethod
     def _parse_json(text: str | None) -> dict | None:

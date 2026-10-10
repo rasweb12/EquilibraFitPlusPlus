@@ -20,7 +20,7 @@ from app.services.workout_service import WorkoutService
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\nmock image").decode()
 
 
-def provider_reply(payload, model="gemini-2.5-flash", fallback=False):
+def provider_reply(payload, model="gemini-3.5-flash-lite", fallback=False):
     return AiProviderResult(payload=payload, provider="gemini", model=model, fallback_used=fallback)
 
 
@@ -29,7 +29,7 @@ async def test_coach_reports_actual_model_even_for_provider_fallback():
     service = CoachService(Settings())
     service._provider.complete_result = AsyncMock(return_value=provider_reply("Vamos ajustar sua rotina.", fallback=True))
     response = await service.reply(CoachMessageRequest(mensagem="Oi", model="untrusted-request-model"))
-    assert response.modelo == "gemini-2.5-flash" and response.fallback_used
+    assert response.modelo == "gemini-3.5-flash-lite" and response.fallback_used
 
 
 @pytest.mark.asyncio
@@ -40,7 +40,7 @@ async def test_plan_accepts_gemini_schema_and_bounds_calories():
     payload["targets"]["calories"] = 5000
     service._provider.complete_json_result = AsyncMock(return_value=provider_reply(payload))
     response = await service.generate(request)
-    assert response.targets.calories == 2200 and response.model == "gemini-2.5-flash"
+    assert response.targets.calories == 2200 and response.model == "gemini-3.5-flash-lite"
     assert not response.fallback_used
     assert service._provider.complete_json_result.await_args.kwargs["feature"] == "plans"
 
@@ -76,7 +76,7 @@ async def test_image_meal_always_requires_review_and_preserves_png_mime():
                "model": "untrusted", "fallback_used": True, "message": "measured"}
     service._provider.analyze_image_json_result = AsyncMock(return_value=provider_reply(payload))
     response = await service.recognize(MealRecognizeRequest(image_base64=PNG))
-    assert response.model == "gemini-2.5-flash" and not response.fallback_used
+    assert response.model == "gemini-3.5-flash-lite" and not response.fallback_used
     assert response.requires_user_review and "nao medidos" in response.message
     assert service._provider.analyze_image_json_result.await_args.kwargs["mime_type"] == "image/png"
 
@@ -88,7 +88,7 @@ async def test_text_meal_uses_text_not_image_operation():
     service._provider.complete_json_result = AsyncMock(return_value=provider_reply(payload))
     service._provider.analyze_image_json_result = AsyncMock()
     response = await service.estimate_text(MealTextEstimateRequest(description="pao com ovo"))
-    assert response.model == "gemini-2.5-flash" and not response.fallback_used
+    assert response.model == "gemini-3.5-flash-lite" and not response.fallback_used
     assert service._provider.complete_json_result.await_args.kwargs["feature"] == "meal_text"
     service._provider.analyze_image_json_result.assert_not_awaited()
 
@@ -118,7 +118,7 @@ async def test_label_image_uses_actual_provider_and_requires_review():
     service._provider.analyze_image_json_result = AsyncMock(return_value=provider_reply(payload))
     response = await service.recognize(LabelRecognizeRequest(image_base64=PNG, label_context="porcao de 30g"))
     assert response.calories == 150 and response.requires_user_review
-    assert response.model == "gemini-2.5-flash" and not response.fallback_used
+    assert response.model == "gemini-3.5-flash-lite" and not response.fallback_used
     assert service._provider.analyze_image_json_result.await_args.kwargs["feature"] == "labels"
     assert "porcao de 30g" in service._provider.analyze_image_json_result.await_args.kwargs["user_prompt"]
 

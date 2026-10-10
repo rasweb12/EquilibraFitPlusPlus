@@ -14,7 +14,7 @@ from app.services.meal_recognition_service import MealRecognitionService
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provider,model", [("openai", "gpt-4.1-mini"), ("gemini", "gemini-2.5-flash")])
+@pytest.mark.parametrize("provider,model", [("openai", "gpt-4.1-mini"), ("gemini", "gemini-3.5-flash-lite")])
 async def test_coach_forwards_selected_provider_and_keeps_actual_model(provider, model):
     service = CoachService(Settings(_env_file=None))
     operation = AsyncMock(return_value=AiProviderResult("Podemos seguir com calma.", provider, model))
@@ -29,7 +29,7 @@ async def test_coach_forwards_selected_provider_and_keeps_actual_model(provider,
 async def test_selected_gemini_still_enforces_clinical_safety():
     service = CoachService(Settings(_env_file=None))
     service._provider.complete_result = AsyncMock(return_value=AiProviderResult(
-        "Pare de tomar seu medicamento.", "gemini", "gemini-2.5-flash"))
+        "Pare de tomar seu medicamento.", "gemini", "gemini-3.5-flash-lite"))
     response = await service.reply(CoachMessageRequest(mensagem="Como adaptar minha rotina?", provider="gemini"))
     assert response.fallback_used
     assert response.modelo == "equilibrafit-coach-rules-v1"

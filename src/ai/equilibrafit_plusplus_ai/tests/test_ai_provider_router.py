@@ -120,7 +120,8 @@ async def test_explicit_fallback_reports_actual_model():
     router = AiProviderRouter(Settings(fallback_enabled=True, fallback_provider="gemini"))
     router._providers = {"openai": fake_provider(), "gemini": fake_provider({"ok": True})}
     result = await router.complete_json_result(feature="coach", system_prompt="s", user_prompt="u")
-    assert result.fallback_used and result.provider == "gemini" and result.model == "gemini-2.5-flash"
+    assert result.fallback_used and result.provider == "gemini"
+    assert result.model == router._settings.model_for_provider("gemini")
 
 
 @pytest.mark.asyncio
