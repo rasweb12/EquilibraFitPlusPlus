@@ -49,6 +49,45 @@ public sealed class PlanoUsuario : AuditableEntity, ITenantEntity, ISoftDelete
 
     /// <summary>Plan nutritional goals.</summary>
     public ICollection<MetaNutricional> MetasNutricionais { get; set; } = [];
+
+    /// <summary>Structured meal suggestions that belong to this plan version.</summary>
+    public ICollection<PlanoRefeicao> Refeicoes { get; set; } = [];
+}
+
+/// <summary>
+/// A suggested meal persisted with its owning plan version.
+/// </summary>
+public sealed class PlanoRefeicao : AuditableEntity, ITenantEntity
+{
+    /// <inheritdoc />
+    public Guid TenantId { get; set; }
+
+    /// <summary>Owning plan identifier.</summary>
+    public Guid PlanoUsuarioId { get; set; }
+
+    /// <summary>Display order inside the plan.</summary>
+    public int Ordem { get; set; }
+
+    /// <summary>Meal name.</summary>
+    public string Nome { get; set; } = string.Empty;
+
+    /// <summary>Educational meal description.</summary>
+    public string Descricao { get; set; } = string.Empty;
+
+    /// <summary>Estimated calories for the suggestion.</summary>
+    public int Calorias { get; set; }
+
+    /// <summary>Optional, trusted image URL. The AI never populates this field.</summary>
+    public string? ImagemUrl { get; set; }
+
+    /// <summary>JSON payload with structured alternatives supplied by the plan generator.</summary>
+    public string AlternativasJson { get; set; } = "[]";
+
+    /// <summary>Optional JSON payload with a reviewed quick recipe.</summary>
+    public string? ReceitaRapidaJson { get; set; }
+
+    /// <summary>Owning plan navigation.</summary>
+    public PlanoUsuario? PlanoUsuario { get; set; }
 }
 
 /// <summary>

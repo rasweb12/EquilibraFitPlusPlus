@@ -22,12 +22,39 @@ class PlanGenerateRequest(BaseModel):
         return self
 
 
+class RecipeIngredient(BaseModel):
+    """Ingredient and quantity for an educational recipe."""
+
+    name: str = Field(min_length=1, max_length=120)
+    quantity: str = Field(min_length=1, max_length=80)
+
+
+class MealAlternative(BaseModel):
+    """Alternative that can replace one plan meal after user confirmation."""
+
+    name: str = Field(min_length=1, max_length=180)
+    description: str = Field(min_length=1, max_length=800)
+    calories: int | None = Field(default=None, ge=0)
+    ingredients: list[RecipeIngredient] = Field(default_factory=list, max_length=12)
+
+
+class QuickRecipe(BaseModel):
+    """Quick educational recipe with concrete preparation details."""
+
+    name: str = Field(min_length=1, max_length=180)
+    ingredients: list[RecipeIngredient] = Field(min_length=1, max_length=12)
+    preparation: list[str] = Field(min_length=1, max_length=8)
+    preparation_minutes: int = Field(ge=1, le=120)
+
+
 class MealSuggestion(BaseModel):
     """Meal suggestion."""
 
     name: str
     description: str
     calories: int = Field(ge=0)
+    alternatives: list[MealAlternative] = Field(default_factory=list, max_length=3)
+    quick_recipe: QuickRecipe | None = None
 
 
 class PlanGenerateResponse(BaseModel):

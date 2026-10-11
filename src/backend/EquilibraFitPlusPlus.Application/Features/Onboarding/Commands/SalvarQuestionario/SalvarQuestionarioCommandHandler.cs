@@ -67,8 +67,8 @@ public sealed class SalvarQuestionarioCommandHandler : IRequestHandler<SalvarQue
         perfil.Objetivo = objetivo;
         perfil.NivelAtividade = nivelAtividade;
         perfil.DiasTreinoSemana = request.DiasTreinoSemana;
-        perfil.PreferenciasJson = JsonStringCollection.Serialize(request.Preferencias);
-        perfil.RestricoesJson = JsonStringCollection.Serialize(request.Restricoes);
+        perfil.PreferenciasJson = JsonStringCollection.Serialize(NormalizeFoodEntries(request.Preferencias));
+        perfil.RestricoesJson = JsonStringCollection.Serialize(NormalizeFoodEntries(request.Restricoes));
         perfil.ObservacoesJson = JsonStringCollection.Serialize(request.Observacoes);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -98,5 +98,23 @@ public sealed class SalvarQuestionarioCommandHandler : IRequestHandler<SalvarQue
             JsonStringCollection.Deserialize(perfil.RestricoesJson),
             JsonStringCollection.Deserialize(perfil.ObservacoesJson),
             "Questionario salvo. Podemos ajustar seu plano com calma conforme sua rotina evolui.");
+    }
+
+    private static IReadOnlyCollection<string> NormalizeFoodEntries(IReadOnlyCollection<string>? values)
+    {
+        return (values ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Where(value => !IsAbsenceAnswer(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsAbsenceAnswer(string value)
+    {
+        return value.Trim().ToLowerInvariant() is
+            "nao tenho" or "não tenho" or "nenhum" or "nenhuma" or "nao" or "não" or
+            "sem preferencia" or "sem preferência" or "sem preferencias" or "sem preferências" or
+            "sem restricao" or "sem restrição" or "sem restricoes" or "sem restrições";
     }
 }

@@ -154,7 +154,32 @@ public sealed record AiMacroTargets(
 public sealed record AiMealSuggestion(
     string Name,
     string Description,
-    int Calories);
+    int Calories,
+    IReadOnlyCollection<AiMealAlternative>? Alternatives = null,
+    AiQuickRecipe? QuickRecipe = null);
+
+/// <summary>
+/// A user-selectable alternative for a generated meal.
+/// </summary>
+public sealed record AiMealAlternative(
+    string Name,
+    string Description,
+    int? Calories,
+    IReadOnlyCollection<AiRecipeIngredient> Ingredients);
+
+/// <summary>
+/// Ingredient and portion supplied for an educational recipe.
+/// </summary>
+public sealed record AiRecipeIngredient(string Name, string Quantity);
+
+/// <summary>
+/// Quick recipe proposed for a meal when its source details are sufficient.
+/// </summary>
+public sealed record AiQuickRecipe(
+    string Name,
+    IReadOnlyCollection<AiRecipeIngredient> Ingredients,
+    IReadOnlyCollection<string> Preparation,
+    int PreparationMinutes);
 
 /// <summary>
 /// Safety notice returned by the AI service.

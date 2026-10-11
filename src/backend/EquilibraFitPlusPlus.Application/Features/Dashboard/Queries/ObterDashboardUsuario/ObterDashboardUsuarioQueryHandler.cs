@@ -1,4 +1,5 @@
 using EquilibraFitPlusPlus.Application.Abstractions.Dashboard;
+using EquilibraFitPlusPlus.Application.Abstractions.AiCoach;
 using EquilibraFitPlusPlus.Application.Common.Health;
 using EquilibraFitPlusPlus.Application.Common.Serialization;
 using EquilibraFitPlusPlus.Contracts.Dashboard;
@@ -6,6 +7,7 @@ using EquilibraFitPlusPlus.Domain.Entities;
 using EquilibraFitPlusPlus.Domain.Enums;
 using EquilibraFitPlusPlus.Shared.Results;
 using MediatR;
+using System.Text.Json;
 
 namespace EquilibraFitPlusPlus.Application.Features.Dashboard.Queries.ObterDashboardUsuario;
 
@@ -106,6 +108,14 @@ public sealed class ObterDashboardUsuarioQueryHandler : IRequestHandler<ObterDas
 
     private static IReadOnlyCollection<DashboardSugestaoRefeicaoResponse> CreateMealSuggestions(PerfilSaude? perfil, PlanoUsuario plano)
     {
+        if (plano.Refeicoes.Count > 0)
+        {
+            return plano.Refeicoes
+                .OrderBy(refeicao => refeicao.Ordem)
+                .Select(MapMeal)
+                .ToArray();
+        }
+
         string preferences = CreateReadableList(perfil?.PreferenciasJson, "suas preferências");
         string restrictions = CreateReadableList(perfil?.RestricoesJson, "restrições informadas");
 
@@ -134,9 +144,73 @@ public sealed class ObterDashboardUsuarioQueryHandler : IRequestHandler<ObterDas
     {
         string[] items = JsonStringCollection.Deserialize(json)
             .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim())
+            .Where(item => !IsAbsenceAnswer(item))
             .Take(4)
             .ToArray();
 
         return items.Length == 0 ? fallback : string.Join(", ", items);
+    }
+
+    private static DashboardSugestaoRefeicaoResponse MapMeal(PlanoRefeicao meal)
+    {
+        AiMealAlternative[] alternatives = Deserialize<AiMealAlternative[]>(meal.AlternativasJson) ?? [];
+        AiQuickRecipe? recipe = Deserialize<AiQuickRecipe>(meal.ReceitaRapidaJson);
+
+        return new DashboardSugestaoRefeicaoResponse(
+            meal.Nome,
+            meal.Descricao,
+            meal.Calorias,
+            meal.Id,
+            IsTrustedImageUrl(meal.ImagemUrl) ? meal.ImagemUrl : null,
+            alternatives
+                .Select((alternative, index) => new DashboardSubstituicaoRefeicaoResponse(
+                    index,
+                    alternative.Name,
+                    alternative.Description,
+                    alternative.Calories,
+                    alternative.Ingredients
+                        .Select(ingredient => new DashboardIngredienteReceitaResponse(ingredient.Name, ingredient.Quantity))
+                        .ToArray()))
+                .ToArray(),
+            recipe is null
+                ? null
+                : new DashboardReceitaRapidaResponse(
+                    recipe.Name,
+                    recipe.Ingredients
+                        .Select(ingredient => new DashboardIngredienteReceitaResponse(ingredient.Name, ingredient.Quantity))
+                        .ToArray(),
+                    recipe.Preparation,
+                    recipe.PreparationMinutes));
+    }
+
+    private static T? Deserialize<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json);
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+    }
+
+    private static bool IsTrustedImageUrl(string? value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps;
+    }
+
+    private static bool IsAbsenceAnswer(string value)
+    {
+        return value.Trim().ToLowerInvariant() is
+            "nao tenho" or "não tenho" or "nenhum" or "nenhuma" or "nao" or "não" or
+            "sem preferencia" or "sem preferência" or "sem preferencias" or "sem preferências" or
+            "sem restricao" or "sem restrição" or "sem restricoes" or "sem restrições";
     }
 }

@@ -22,4 +22,15 @@ class PlanRepository {
       timeout: ApiClient.aiRequestTimeout,
     );
   }
+
+  Future<void> replaceMeal({
+    required String planId,
+    required String mealId,
+    required int alternativeIndex,
+  }) async {
+    await _client.postJson(
+      '/api/v1/planos/alimentar/$planId/refeicoes/$mealId/substituir',
+      body: <String, Object?>{'indiceAlternativa': alternativeIndex},
+    );
+  }
 }

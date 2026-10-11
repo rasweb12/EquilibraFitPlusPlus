@@ -211,9 +211,7 @@ public sealed class AiCoachHttpClient : IAiCoachClient
                     response.Targets.CarbsG,
                     response.Targets.FatG);
 
-                var meals = response.Meals
-                    .Select(item => new AiMealSuggestion(item.Name ?? "Refeição", item.Description ?? "Opção flexível.", item.Calories))
-                    .ToArray();
+                var meals = response.Meals.Select(MapMealSuggestion).ToArray();
 
                 var notices = response.SafetyNotices
                     .Select(item => new AiSafetyNotice(item.Message ?? "Proposta educacional.", item.RequiresProfessionalReview))
@@ -417,6 +415,51 @@ public sealed class AiCoachHttpClient : IAiCoachClient
         return Math.Clamp(value, 0m, 1m);
     }
 
+    private static AiMealSuggestion MapMealSuggestion(AiMealSuggestionHttpResponse item)
+    {
+        var alternatives = item.Alternatives?
+            .Where(alternative => alternative is not null && !string.IsNullOrWhiteSpace(alternative.Name))
+            .Select(alternative => new AiMealAlternative(
+                alternative.Name!,
+                alternative.Description ?? "Alternativa ajustável conforme suas preferências.",
+                alternative.Calories,
+                MapRecipeIngredients(alternative.Ingredients)))
+            .ToArray() ?? [];
+
+        return new AiMealSuggestion(
+            item.Name ?? "Refeição",
+            item.Description ?? "Opção flexível.",
+            item.Calories,
+            alternatives,
+            MapQuickRecipe(item.QuickRecipe));
+    }
+
+    private static IReadOnlyCollection<AiRecipeIngredient> MapRecipeIngredients(
+        IReadOnlyCollection<AiRecipeIngredientHttpResponse>? ingredients) =>
+        ingredients?
+            .Where(ingredient => ingredient is not null &&
+                                 !string.IsNullOrWhiteSpace(ingredient.Name) &&
+                                 !string.IsNullOrWhiteSpace(ingredient.Quantity))
+            .Select(ingredient => new AiRecipeIngredient(ingredient.Name!, ingredient.Quantity!))
+            .ToArray() ?? [];
+
+    private static AiQuickRecipe? MapQuickRecipe(AiQuickRecipeHttpResponse? recipe)
+    {
+        if (recipe is null || string.IsNullOrWhiteSpace(recipe.Name))
+        {
+            return null;
+        }
+
+        var ingredients = MapRecipeIngredients(recipe.Ingredients);
+        var preparation = recipe.Preparation?
+            .Where(step => !string.IsNullOrWhiteSpace(step))
+            .ToArray() ?? [];
+
+        return ingredients.Count == 0 || preparation.Length == 0
+            ? null
+            : new AiQuickRecipe(recipe.Name, ingredients, preparation, Math.Clamp(recipe.PreparationMinutes, 1, 120));
+    }
+
     private sealed record AiCoachHttpRequest(
         [property: JsonPropertyName("tenant_id")] Guid TenantId,
         [property: JsonPropertyName("usuario_id")] Guid UsuarioId,
@@ -511,7 +554,25 @@ public sealed class AiCoachHttpClient : IAiCoachClient
     private sealed record AiMealSuggestionHttpResponse(
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("description")] string? Description,
-        [property: JsonPropertyName("calories")] int Calories);
+        [property: JsonPropertyName("calories")] int Calories,
+        [property: JsonPropertyName("alternatives")] IReadOnlyCollection<AiMealAlternativeHttpResponse>? Alternatives,
+        [property: JsonPropertyName("quick_recipe")] AiQuickRecipeHttpResponse? QuickRecipe);
+
+    private sealed record AiMealAlternativeHttpResponse(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("description")] string? Description,
+        [property: JsonPropertyName("calories")] int? Calories,
+        [property: JsonPropertyName("ingredients")] IReadOnlyCollection<AiRecipeIngredientHttpResponse>? Ingredients);
+
+    private sealed record AiRecipeIngredientHttpResponse(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("quantity")] string? Quantity);
+
+    private sealed record AiQuickRecipeHttpResponse(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("ingredients")] IReadOnlyCollection<AiRecipeIngredientHttpResponse>? Ingredients,
+        [property: JsonPropertyName("preparation")] IReadOnlyCollection<string>? Preparation,
+        [property: JsonPropertyName("preparation_minutes")] int PreparationMinutes);
 
     private sealed record AiSafetyNoticeHttpResponse(
         [property: JsonPropertyName("message")] string? Message,

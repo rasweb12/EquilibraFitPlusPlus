@@ -11,6 +11,7 @@ using EquilibraFitPlusPlus.Domain.Enums;
 using EquilibraFitPlusPlus.Shared.Errors;
 using EquilibraFitPlusPlus.Shared.Results;
 using MediatR;
+using System.Text.Json;
 
 namespace EquilibraFitPlusPlus.Application.Features.Planos.Commands.GerarPlanoAlimentar;
 
@@ -116,6 +117,20 @@ public sealed class GerarPlanoAlimentarCommandHandler : IRequestHandler<GerarPla
         };
 
         plano.MetasNutricionais.Add(meta);
+        int ordem = 0;
+        foreach (AiMealSuggestion meal in generated.Meals)
+        {
+            plano.Refeicoes.Add(new PlanoRefeicao
+            {
+                TenantId = command.TenantId,
+                Ordem = ordem++,
+                Nome = Truncate(meal.Name, 180),
+                Descricao = Truncate(meal.Description, 1200),
+                Calorias = Math.Max(0, meal.Calories),
+                AlternativasJson = JsonSerializer.Serialize(meal.Alternatives ?? []),
+                ReceitaRapidaJson = meal.QuickRecipe is null ? null : JsonSerializer.Serialize(meal.QuickRecipe)
+            });
+        }
         _planoRepository.AdicionarPlano(plano);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -215,9 +230,18 @@ public sealed class GerarPlanoAlimentarCommandHandler : IRequestHandler<GerarPla
             .Concat(second ?? [])
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Select(item => item.Trim())
+            .Where(item => !IsAbsenceAnswer(item))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(30)
             .ToArray();
+    }
+
+    private static bool IsAbsenceAnswer(string value)
+    {
+        return value.Trim().ToLowerInvariant() is
+            "nao tenho" or "não tenho" or "nenhum" or "nenhuma" or "nao" or "não" or
+            "sem preferencia" or "sem preferência" or "sem preferencias" or "sem preferências" or
+            "sem restricao" or "sem restrição" or "sem restricoes" or "sem restrições";
     }
 
     private static int CalculateWaterTarget(decimal weightKg)

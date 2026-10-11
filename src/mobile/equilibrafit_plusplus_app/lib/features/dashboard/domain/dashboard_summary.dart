@@ -97,9 +97,57 @@ class DashboardMealSuggestion {
     required this.name,
     required this.description,
     required this.calories,
+    this.id,
+    this.imageUrl,
+    this.substitutions = const <DashboardMealSubstitution>[],
+    this.quickRecipe,
   });
 
   final String name;
   final String description;
   final int calories;
+  final String? id;
+  final String? imageUrl;
+  final List<DashboardMealSubstitution> substitutions;
+  final DashboardQuickRecipe? quickRecipe;
+}
+
+class DashboardMealSubstitution {
+  const DashboardMealSubstitution({
+    required this.index,
+    required this.name,
+    required this.description,
+    this.calories,
+    this.ingredients = const <DashboardRecipeIngredient>[],
+  });
+
+  final int index;
+  final String name;
+  final String description;
+  final int? calories;
+  final List<DashboardRecipeIngredient> ingredients;
+}
+
+class DashboardRecipeIngredient {
+  const DashboardRecipeIngredient({
+    required this.name,
+    required this.quantity,
+  });
+
+  final String name;
+  final String quantity;
+}
+
+class DashboardQuickRecipe {
+  const DashboardQuickRecipe({
+    required this.name,
+    required this.ingredients,
+    required this.preparation,
+    required this.preparationMinutes,
+  });
+
+  final String name;
+  final List<DashboardRecipeIngredient> ingredients;
+  final List<String> preparation;
+  final int preparationMinutes;
 }

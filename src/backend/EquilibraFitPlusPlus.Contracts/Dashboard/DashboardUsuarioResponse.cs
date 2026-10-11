@@ -52,4 +52,35 @@ public sealed record DashboardPlanoResponse(
 /// <summary>
 /// Meal suggestion shown with the active diet plan.
 /// </summary>
-public sealed record DashboardSugestaoRefeicaoResponse(string Nome, string Descricao, int Calorias);
+public sealed record DashboardSugestaoRefeicaoResponse(
+    string Nome,
+    string Descricao,
+    int Calorias,
+    Guid? Id = null,
+    string? ImagemUrl = null,
+    IReadOnlyCollection<DashboardSubstituicaoRefeicaoResponse>? Substituicoes = null,
+    DashboardReceitaRapidaResponse? ReceitaRapida = null);
+
+/// <summary>
+/// Alternative available for a persisted plan meal.
+/// </summary>
+public sealed record DashboardSubstituicaoRefeicaoResponse(
+    int Indice,
+    string Nome,
+    string Descricao,
+    int? Calorias,
+    IReadOnlyCollection<DashboardIngredienteReceitaResponse> Ingredientes);
+
+/// <summary>
+/// Ingredient and portion disclosed by the plan generator.
+/// </summary>
+public sealed record DashboardIngredienteReceitaResponse(string Nome, string Quantidade);
+
+/// <summary>
+/// Quick recipe linked to the meal when generation returned enough details.
+/// </summary>
+public sealed record DashboardReceitaRapidaResponse(
+    string Nome,
+    IReadOnlyCollection<DashboardIngredienteReceitaResponse> Ingredientes,
+    IReadOnlyCollection<string> Preparo,
+    int TempoPreparoMinutos);

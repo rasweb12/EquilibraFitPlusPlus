@@ -44,6 +44,8 @@ public sealed class EquilibraFitPlusPlusDbContext : DbContext, IUnitOfWork
     /// <summary>User plans.</summary>
     public DbSet<PlanoUsuario> PlanosUsuario => Set<PlanoUsuario>();
 
+    public DbSet<PlanoRefeicao> PlanosRefeicoes => Set<PlanoRefeicao>();
+
     /// <summary>Nutritional goals.</summary>
     public DbSet<MetaNutricional> MetasNutricionais => Set<MetaNutricional>();
 
@@ -198,6 +200,19 @@ public sealed class EquilibraFitPlusPlusDbContext : DbContext, IUnitOfWork
             entity.HasIndex(x => new { x.TenantId, x.UsuarioId });
             entity.HasQueryFilter("UsuarioAtivo", x => x.Usuario == null || x.Usuario.ExcluidoEm == null);
             entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PlanoRefeicao>(entity =>
+        {
+            entity.ToTable("PlanosRefeicoes");
+            entity.Property(x => x.Nome).HasMaxLength(180).IsRequired();
+            entity.Property(x => x.Descricao).HasMaxLength(1200).IsRequired();
+            entity.Property(x => x.ImagemUrl).HasMaxLength(2000);
+            entity.Property(x => x.AlternativasJson).HasMaxLength(12000).IsRequired();
+            entity.Property(x => x.ReceitaRapidaJson).HasMaxLength(12000);
+            entity.HasIndex(x => new { x.PlanoUsuarioId, x.Ordem }).IsUnique();
+            entity.HasQueryFilter("PlanoAtivo", x => x.PlanoUsuario == null || x.PlanoUsuario.ExcluidoEm == null);
+            entity.HasOne(x => x.PlanoUsuario).WithMany(x => x.Refeicoes).HasForeignKey(x => x.PlanoUsuarioId).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<Tenant>(entity =>
         {

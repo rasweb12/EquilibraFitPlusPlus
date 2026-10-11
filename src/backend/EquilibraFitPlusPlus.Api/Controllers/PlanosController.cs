@@ -1,4 +1,5 @@
 using EquilibraFitPlusPlus.Application.Features.Planos.Commands.GerarPlanoAlimentar;
+using EquilibraFitPlusPlus.Application.Features.Planos.Commands.SubstituirPlanoRefeicao;
 using EquilibraFitPlusPlus.Contracts.Planos;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -36,6 +37,28 @@ public sealed class PlanosController : ApiControllerBase
         }
 
         var result = await _sender.Send(new GerarPlanoAlimentarCommand(tenantId, usuarioId, request), cancellationToken);
+        return HandleResult(result);
+    }
+
+    /// <summary>
+    /// Replaces one meal after the user explicitly confirms a generated alternative.
+    /// </summary>
+    [HttpPost("alimentar/{planoId:guid}/refeicoes/{refeicaoId:guid}/substituir")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SubstituirRefeicao(
+        Guid planoId,
+        Guid refeicaoId,
+        [FromBody] SubstituirPlanoRefeicaoRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserContext(out Guid tenantId, out Guid usuarioId))
+        {
+            return UnauthorizedUserContext();
+        }
+
+        var result = await _sender.Send(
+            new SubstituirPlanoRefeicaoCommand(tenantId, usuarioId, planoId, refeicaoId, request),
+            cancellationToken);
         return HandleResult(result);
     }
 }

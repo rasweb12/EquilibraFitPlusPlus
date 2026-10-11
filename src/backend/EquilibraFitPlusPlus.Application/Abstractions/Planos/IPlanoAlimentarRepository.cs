@@ -18,6 +18,11 @@ public interface IPlanoAlimentarRepository
     Task<PlanoUsuario?> ObterPlanoAtivoAsync(Guid tenantId, Guid usuarioId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets a meal that belongs to the current user's active plan.
+    /// </summary>
+    Task<PlanoRefeicao?> ObterRefeicaoAtivaAsync(Guid tenantId, Guid usuarioId, Guid planoId, Guid refeicaoId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets the next version number for a user's plan.
     /// </summary>
     Task<int> ObterProximaVersaoAsync(Guid tenantId, Guid usuarioId, CancellationToken cancellationToken);

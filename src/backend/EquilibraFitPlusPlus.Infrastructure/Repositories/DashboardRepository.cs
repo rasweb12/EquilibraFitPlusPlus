@@ -31,6 +31,7 @@ public sealed class DashboardRepository : IDashboardRepository
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.UsuarioId == usuarioId, cancellationToken);
 
         PlanoUsuario? plano = await _dbContext.PlanosUsuario
+            .Include(item => item.Refeicoes.OrderBy(refeicao => refeicao.Ordem))
             .OrderByDescending(item => item.Versao)
             .ThenByDescending(item => item.CriadoEm)
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.UsuarioId == usuarioId && item.Status == StatusPlano.Ativo, cancellationToken);

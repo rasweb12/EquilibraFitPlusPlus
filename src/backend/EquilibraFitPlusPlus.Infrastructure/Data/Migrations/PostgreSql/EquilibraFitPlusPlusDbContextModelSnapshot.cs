@@ -1463,6 +1463,72 @@ namespace EquilibraFitPlusPlus.Infrastructure.Data.Migrations.PostgreSql
                         });
                 });
 
+            modelBuilder.Entity("EquilibraFitPlusPlus.Domain.Entities.PlanoRefeicao", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AlternativasJson")
+                        .IsRequired()
+                        .HasMaxLength(12000)
+                        .HasColumnType("character varying(12000)");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AtualizadoPor")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Calorias")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CriadoPor")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Descricao")
+                        .IsRequired()
+                        .HasMaxLength(1200)
+                        .HasColumnType("character varying(1200)");
+
+                    b.Property<string>("ImagemUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)");
+
+                    b.Property<int>("Ordem")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PlanoUsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReceitaRapidaJson")
+                        .HasMaxLength(12000)
+                        .HasColumnType("character varying(12000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanoUsuarioId", "Ordem")
+                        .IsUnique();
+
+                    b.ToTable("PlanosRefeicoes", "app");
+                });
+
             modelBuilder.Entity("EquilibraFitPlusPlus.Domain.Entities.PlanoUsuario", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2745,6 +2811,17 @@ namespace EquilibraFitPlusPlus.Infrastructure.Data.Migrations.PostgreSql
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("EquilibraFitPlusPlus.Domain.Entities.PlanoRefeicao", b =>
+                {
+                    b.HasOne("EquilibraFitPlusPlus.Domain.Entities.PlanoUsuario", "PlanoUsuario")
+                        .WithMany("Refeicoes")
+                        .HasForeignKey("PlanoUsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlanoUsuario");
+                });
+
             modelBuilder.Entity("EquilibraFitPlusPlus.Domain.Entities.PlanoUsuario", b =>
                 {
                     b.HasOne("EquilibraFitPlusPlus.Domain.Entities.Usuario", "Usuario")
@@ -2967,6 +3044,8 @@ namespace EquilibraFitPlusPlus.Infrastructure.Data.Migrations.PostgreSql
             modelBuilder.Entity("EquilibraFitPlusPlus.Domain.Entities.PlanoUsuario", b =>
                 {
                     b.Navigation("MetasNutricionais");
+
+                    b.Navigation("Refeicoes");
                 });
 
             modelBuilder.Entity("EquilibraFitPlusPlus.Domain.Entities.RefeicaoPredefinida", b =>

@@ -33,10 +33,26 @@ public sealed class PlanoAlimentarRepository : IPlanoAlimentarRepository
     {
         return _dbContext.PlanosUsuario
             .Include(plano => plano.MetasNutricionais)
+            .Include(plano => plano.Refeicoes.OrderBy(refeicao => refeicao.Ordem))
             .OrderByDescending(plano => plano.Versao)
             .ThenByDescending(plano => plano.CriadoEm)
             .FirstOrDefaultAsync(
                 plano => plano.TenantId == tenantId && plano.UsuarioId == usuarioId && plano.Status == StatusPlano.Ativo,
+                cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<PlanoRefeicao?> ObterRefeicaoAtivaAsync(Guid tenantId, Guid usuarioId, Guid planoId, Guid refeicaoId, CancellationToken cancellationToken)
+    {
+        return _dbContext.PlanosRefeicoes
+            .Include(refeicao => refeicao.PlanoUsuario)
+            .FirstOrDefaultAsync(refeicao =>
+                refeicao.TenantId == tenantId &&
+                refeicao.Id == refeicaoId &&
+                refeicao.PlanoUsuarioId == planoId &&
+                refeicao.PlanoUsuario != null &&
+                refeicao.PlanoUsuario.UsuarioId == usuarioId &&
+                refeicao.PlanoUsuario.Status == StatusPlano.Ativo,
                 cancellationToken);
     }
 

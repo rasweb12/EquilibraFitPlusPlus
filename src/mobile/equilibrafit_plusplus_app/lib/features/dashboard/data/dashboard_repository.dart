@@ -103,10 +103,58 @@ class DashboardRepository {
   }
 
   DashboardMealSuggestion _mealSuggestionFromJson(Map<String, Object?> json) {
+    final substitutions = jsonObjectList(
+      json['substituicoes'] ?? json['Substituicoes'],
+    ).map(_substitutionFromJson).toList(growable: false);
+    final recipe = jsonObject(json['receitaRapida'] ?? json['ReceitaRapida']);
+
     return DashboardMealSuggestion(
       name: jsonString(json['nome'] ?? json['Nome']),
       description: jsonString(json['descricao'] ?? json['Descricao']),
       calories: jsonInt(json['calorias'] ?? json['Calorias']),
+      id: _nullableString(json['id'] ?? json['Id']),
+      imageUrl: _nullableString(json['imagemUrl'] ?? json['ImagemUrl']),
+      substitutions: substitutions,
+      quickRecipe: recipe.isEmpty ? null : _recipeFromJson(recipe),
+    );
+  }
+
+  DashboardMealSubstitution _substitutionFromJson(Map<String, Object?> json) {
+    return DashboardMealSubstitution(
+      index: jsonInt(json['indice'] ?? json['Indice']),
+      name: jsonString(json['nome'] ?? json['Nome']),
+      description: jsonString(json['descricao'] ?? json['Descricao']),
+      calories: _nullableInt(json['calorias'] ?? json['Calorias']),
+      ingredients: jsonObjectList(
+        json['ingredientes'] ?? json['Ingredientes'],
+      ).map(_ingredientFromJson).toList(growable: false),
+    );
+  }
+
+  DashboardQuickRecipe _recipeFromJson(Map<String, Object?> json) {
+    final preparation = json['preparo'] ?? json['Preparo'];
+    return DashboardQuickRecipe(
+      name: jsonString(json['nome'] ?? json['Nome']),
+      ingredients: jsonObjectList(
+        json['ingredientes'] ?? json['Ingredientes'],
+      ).map(_ingredientFromJson).toList(growable: false),
+      preparation: preparation is List
+          ? preparation
+              .whereType<Object?>()
+              .map((item) => item?.toString().trim() ?? '')
+              .where((item) => item.isNotEmpty)
+              .toList(growable: false)
+          : const <String>[],
+      preparationMinutes: jsonInt(
+        json['tempoPreparoMinutos'] ?? json['TempoPreparoMinutos'],
+      ),
+    );
+  }
+
+  DashboardRecipeIngredient _ingredientFromJson(Map<String, Object?> json) {
+    return DashboardRecipeIngredient(
+      name: jsonString(json['nome'] ?? json['Nome']),
+      quantity: jsonString(json['quantidade'] ?? json['Quantidade']),
     );
   }
 
@@ -121,5 +169,13 @@ class DashboardRepository {
   String? _nullableString(Object? value) {
     final text = value?.toString().trim();
     return text == null || text.isEmpty ? null : text;
+  }
+
+  int? _nullableInt(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    return jsonInt(value);
   }
 }
