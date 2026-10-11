@@ -321,6 +321,7 @@ class ApiClient {
       return AppFailure(
         apiMessage,
         code: statusCode?.toString(),
+        apiCode: _extractCode(data),
       );
     }
 
@@ -494,6 +495,19 @@ class ApiClient {
     }
 
     return null;
+  }
+
+  String? _extractCode(Object? data) {
+    if (data is! Map) {
+      return null;
+    }
+
+    final value = data['code'] ?? data['Code'];
+    if (value is! String || value.trim().isEmpty) {
+      return null;
+    }
+
+    return value.trim();
   }
 
   bool _isConnectionFailure(

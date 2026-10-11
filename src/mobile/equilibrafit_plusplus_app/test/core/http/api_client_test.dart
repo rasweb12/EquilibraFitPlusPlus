@@ -83,6 +83,42 @@ void main() {
     );
   });
 
+  test('structured API error preserves domain code separately', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.reject(
+          DioException(
+            requestOptions: options,
+            type: DioExceptionType.badResponse,
+            response: Response<Object?>(
+              requestOptions: options,
+              statusCode: 400,
+              data: <String, Object?>{
+                'code': 'auth.email_confirmation_required',
+                'message': 'Confirme seu email e entre novamente.',
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    addTearDown(() => dio.close(force: true));
+
+    await expectLater(
+      ApiClient(dio).postJson('/api/v1/auth/cadastrar'),
+      throwsA(
+        isA<AppFailure>()
+            .having((failure) => failure.code, 'HTTP status', '400')
+            .having(
+              (failure) => failure.apiCode,
+              'domain code',
+              'auth.email_confirmation_required',
+            ),
+      ),
+    );
+  });
+
   test('response timeout is distinguished from connection failure', () async {
     final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'));
     dio.interceptors.add(

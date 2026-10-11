@@ -148,64 +148,19 @@ class ProgressPage extends ConsumerWidget {
   }
 
   Future<void> _showWeightDialog(BuildContext context, WidgetRef ref) async {
-    final weightController = TextEditingController();
-    final noteController = TextEditingController();
-
-    final confirmed = await showDialog<bool>(
+    final entry = await showDialog<WeightEntry>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Registrar peso'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: weightController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Peso em kg'),
-            ),
-            const SizedBox(height: AppTokens.space12),
-            TextField(
-              controller: noteController,
-              decoration:
-                  const InputDecoration(labelText: 'Observação opcional'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
+      builder: (context) => const WeightEntryDialog(),
     );
 
-    final weight = double.tryParse(weightController.text.replaceAll(',', '.'));
-    final note = noteController.text.trim();
-    weightController.dispose();
-    noteController.dispose();
-
-    if (confirmed != true) {
-      return;
-    }
-
-    if (weight == null || weight < 25 || weight > 350) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Informe um peso válido.')),
-        );
-      }
+    if (entry == null) {
       return;
     }
 
     try {
       await ref.read(progressRepositoryProvider).saveWeight(
-            weightKg: weight,
-            note: note.isEmpty ? null : note,
+            weightKg: entry.weightKg,
+            note: entry.note,
           );
       ref.invalidate(dashboardSummaryProvider);
       if (context.mounted) {
@@ -226,6 +181,98 @@ class ProgressPage extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+class WeightEntry {
+  const WeightEntry({required this.weightKg, this.note});
+
+  final double weightKg;
+  final String? note;
+}
+
+class WeightEntryDialog extends StatefulWidget {
+  const WeightEntryDialog({super.key});
+
+  @override
+  State<WeightEntryDialog> createState() => _WeightEntryDialogState();
+}
+
+class _WeightEntryDialogState extends State<WeightEntryDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _weightController = TextEditingController();
+  final _noteController = TextEditingController();
+
+  @override
+  void dispose() {
+    _weightController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Registrar peso'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _weightController,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: 'Peso em kg'),
+              validator: (value) {
+                final weight = _parseWeight(value);
+                return weight == null || weight < 25 || weight > 350
+                    ? 'Informe um peso válido.'
+                    : null;
+              },
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: AppTokens.space12),
+            TextFormField(
+              controller: _noteController,
+              decoration: const InputDecoration(
+                labelText: 'Observação opcional',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    final note = _noteController.text.trim();
+    Navigator.of(context).pop(
+      WeightEntry(
+        weightKg: _parseWeight(_weightController.text)!,
+        note: note.isEmpty ? null : note,
+      ),
+    );
+  }
+
+  double? _parseWeight(String? value) {
+    return double.tryParse((value ?? '').trim().replaceAll(',', '.'));
   }
 }
 

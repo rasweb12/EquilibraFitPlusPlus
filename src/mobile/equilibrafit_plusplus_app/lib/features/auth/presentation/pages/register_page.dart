@@ -233,7 +233,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       }
     } on AppFailure catch (failure) {
       _showMessage(failure.message);
-      if (failure.code == 'auth.email_confirmation_required' && mounted) {
+      if (failure.apiCode == 'auth.email_confirmation_required' && mounted) {
         context.go('/login');
       }
     } finally {
