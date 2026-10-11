@@ -96,8 +96,6 @@ try
         await scope.ServiceProvider.GetRequiredService<EquilibraFitPlusPlusDbContext>().Database.EnsureCreatedAsync();
     }
 
-    app.UseMiddleware<ExceptionHandlingMiddleware>();
-
     app.Use(async (context, next) =>
     {
         string incoming = context.Request.Headers["X-Correlation-ID"].ToString();
@@ -110,6 +108,7 @@ try
             await next();
     });
     app.UseSerilogRequestLogging();
+    app.UseMiddleware<ExceptionHandlingMiddleware>();
 
     app.Use(async (context, next) =>
     {

@@ -1,5 +1,6 @@
 using EquilibraFitPlusPlus.Api.Middleware;
 using EquilibraFitPlusPlus.Application.Abstractions.Billing;
+using EquilibraFitPlusPlus.Application.Abstractions.Data;
 using EquilibraFitPlusPlus.Contracts.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -87,6 +88,30 @@ public sealed class ExceptionHandlingMiddlewareTests
         body.Position = 0;
         var error = await JsonSerializer.DeserializeAsync<ApiErrorResponse>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Equal(code, error!.Code);
+    }
+
+    /// <summary>Optimistic concurrency conflicts are returned as a safe HTTP 409 response.</summary>
+    [Fact]
+    public async Task PersistenceConflict_ShouldReturnConflict()
+    {
+        var context = new DefaultHttpContext();
+        using var body = new MemoryStream();
+        context.Response.Body = body;
+        var middleware = new ExceptionHandlingMiddleware(
+            _ => throw new PersistenceConflictException(
+                "persistence.concurrency",
+                "Os dados foram alterados por outra operação."),
+            NullLogger<ExceptionHandlingMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        body.Position = 0;
+        var error = await JsonSerializer.DeserializeAsync<ApiErrorResponse>(
+            body,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("sync_conflict", error!.Code);
+        Assert.Equal("Os dados foram alterados por outra operação.", error.Message);
     }
 
     private sealed class StartedResponseFeature : HttpResponseFeature

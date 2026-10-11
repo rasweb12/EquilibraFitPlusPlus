@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:equilibrafit_plusplus_app/features/habits/data/daily_habits_controller.dart';
+import 'package:equilibrafit_plusplus_app/features/habits/data/habits_repository.dart';
 import 'package:equilibrafit_plusplus_app/features/habits/domain/daily_habits.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -48,5 +53,53 @@ void main() {
       expect(habits.mood, 5);
       expect(habits.stretchingDone, true);
     });
+
+    test('serializes rapid remote saves and keeps the newest water value',
+        () async {
+      final directory = await Directory.systemTemp.createTemp('habits_test_');
+      Hive.init(directory.path);
+      addTearDown(() async {
+        await Hive.close();
+        await directory.delete(recursive: true);
+      });
+      final repository = _DelayedHabitsRepository();
+      final controller = DailyHabitsController(repository);
+      addTearDown(controller.dispose);
+      await controller.initialized;
+
+      final first = controller.incrementWater();
+      final second = controller.incrementWater();
+      await Future.wait(<Future<void>>[first, second]);
+
+      expect(repository.maxConcurrentSaves, 1);
+      expect(repository.savedWaterMl, <int>[250, 500]);
+      expect(controller.state.waterMl, 500);
+    });
   });
+}
+
+class _DelayedHabitsRepository implements HabitsRepository {
+  int _activeSaves = 0;
+  int maxConcurrentSaves = 0;
+  final List<int> savedWaterMl = <int>[];
+
+  @override
+  Future<DailyHabits> fetchDaily({required String date}) async {
+    return const DailyHabits();
+  }
+
+  @override
+  Future<DailyHabits> saveDaily({
+    required String date,
+    required DailyHabits habits,
+  }) async {
+    _activeSaves++;
+    if (_activeSaves > maxConcurrentSaves) {
+      maxConcurrentSaves = _activeSaves;
+    }
+    savedWaterMl.add(habits.waterMl);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    _activeSaves--;
+    return habits;
+  }
 }
